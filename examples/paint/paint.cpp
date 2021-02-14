@@ -120,13 +120,13 @@ int main(int argv, char **argc) {
 
     switch (t) {
     case TB_EVENT_KEY:
-      if (ev.key == TB_KEY_ESC) {
+      if (ev.key == key_code::esc) {
         tb_shutdown();
         return 0;
       }
       break;
     case TB_EVENT_MOUSE:
-      if (ev.key == TB_KEY_MOUSE_LEFT) {
+      if (ev.key == key_code::mouse_left) {
         mx = ev.x;
         my = ev.y;
       }

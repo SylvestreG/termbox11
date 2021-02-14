@@ -520,7 +520,7 @@ void draw_keyboard() {
   printf_tb(3, 18, TB_WHITE, TB_DEFAULT, "Input mode: %s", inputmode_str);
 }
 
-const char *funckeymap(int k) {
+const char *funckeymap(key_code k) {
   static const char *fcmap[] = {"CTRL+2, CTRL+~",
                                 "CTRL+A",
                                 "CTRL+B",
@@ -560,12 +560,12 @@ const char *funckeymap(int k) {
       "INSERT",   "DELETE",     "HOME",       "END",        "PGUP", "PGDN",
       "ARROW UP", "ARROW DOWN", "ARROW LEFT", "ARROW RIGHT"};
 
-  if (k == TB_KEY_CTRL_8)
+  if (k == key_code::ctrl_8)
     return "CTRL+8, BACKSPACE 2"; /* 0x7F */
-  else if (k >= TB_KEY_ARROW_RIGHT && k <= 0xFFFF)
-    return fkmap[0xFFFF - k];
-  else if (k <= TB_KEY_SPACE)
-    return fcmap[k];
+  else if (k >= key_code::arrow_right && k <= (key_code)0xFFFF)
+    return fkmap[0xFFFF - (uint16_t)k];
+  else if (k <= key_code::space)
+    return fcmap[(uint16_t)k];
   return "UNKNOWN";
 }
 
@@ -598,23 +598,25 @@ void pretty_print_mouse(struct tb_event *ev) {
   printf_tb(3, 19, TB_WHITE, TB_DEFAULT, "Mouse event: %d x %d", ev->x, ev->y);
   const char *btn = "";
   switch (ev->key) {
-  case TB_KEY_MOUSE_LEFT:
+  case key_code::mouse_left:
     btn = "MouseLeft: %d";
     break;
-  case TB_KEY_MOUSE_MIDDLE:
+  case key_code::mouse_middle:
     btn = "MouseMiddle: %d";
     break;
-  case TB_KEY_MOUSE_RIGHT:
+  case key_code::mouse_right:
     btn = "MouseRight: %d";
     break;
-  case TB_KEY_MOUSE_WHEEL_UP:
+  case key_code::mouse_wheel_up:
     btn = "MouseWheelUp: %d";
     break;
-  case TB_KEY_MOUSE_WHEEL_DOWN:
+  case key_code::mouse_wheel_down:
     btn = "MouseWheelDown: %d";
     break;
-  case TB_KEY_MOUSE_RELEASE:
+  case key_code::mouse_release:
     btn = "MouseRelease: %d";
+  default:
+    break;
   }
   counter++;
   printf_tb(43, 19, TB_WHITE, TB_DEFAULT, "Key: ");
@@ -628,11 +630,11 @@ void dispatch_press(struct tb_event *ev) {
   }
 
   struct combo *k = 0;
-  if (ev->key >= TB_KEY_ARROW_RIGHT)
-    k = &func_combos[0xFFFF - ev->key];
+  if (ev->key >= key_code::arrow_right)
+    k = &func_combos[0xFFFF - (uint32_t)ev->key];
   else if (ev->ch < 128) {
-    if (ev->ch == 0 && ev->key < 128)
-      k = &combos[ev->key];
+    if (ev->ch == 0 && ev->key < (key_code)128)
+      k = &combos[(uint32_t)ev->key];
     else
       k = &combos[ev->ch];
   }
@@ -669,11 +671,11 @@ int main(int argc, char **argv) {
   while (tb_poll_event(&ev)) {
     switch (ev.type) {
     case TB_EVENT_KEY:
-      if (ev.key == TB_KEY_CTRL_Q && ctrlxpressed) {
+      if (ev.key == key_code::ctrl_q && ctrlxpressed) {
         tb_shutdown();
         return 0;
       }
-      if (ev.key == TB_KEY_CTRL_C && ctrlxpressed) {
+      if (ev.key == key_code::ctrl_c && ctrlxpressed) {
         static int chmap[] = {
             TB_INPUT_ESC | TB_INPUT_MOUSE, /* 101 */
             TB_INPUT_ALT | TB_INPUT_MOUSE, /* 110 */
@@ -686,7 +688,7 @@ int main(int argc, char **argv) {
         }
         tb_select_input_mode(chmap[inputmode]);
       }
-      if (ev.key == TB_KEY_CTRL_X)
+      if (ev.key == key_code::ctrl_x)
         ctrlxpressed = 1;
       else
         ctrlxpressed = 0;

@@ -15,10 +15,9 @@
 #include <wchar.h>
 
 #include "termbox.h"
-
+#include "term.inl"
 #include "bytebuffer.inl"
 #include "input.inl"
-#include "term.inl"
 
 struct cellbuf {
   int width;

@@ -102,8 +102,10 @@ int main(int argc, char **argv) {
     switch (ev.type) {
     case TB_EVENT_KEY:
       switch (ev.key) {
-      case TB_KEY_ESC:
+      case key_code::esc:
         goto done;
+        break;
+      default:
         break;
       }
       break;

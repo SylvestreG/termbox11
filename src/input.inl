@@ -20,21 +20,21 @@ static int parse_mouse_event(struct tb_event *event, const char *buf, int len) {
 		switch (b & 3) {
 		case 0:
 			if ((b & 64) != 0)
-				event->key = TB_KEY_MOUSE_WHEEL_UP;
+				event->key = key_code::mouse_wheel_up;
 			else
-				event->key = TB_KEY_MOUSE_LEFT;
+				event->key = key_code::mouse_left;
 			break;
 		case 1:
 			if ((b & 64) != 0)
-				event->key = TB_KEY_MOUSE_WHEEL_DOWN;
+				event->key = key_code::mouse_wheel_down;
 			else
-				event->key = TB_KEY_MOUSE_MIDDLE;
+				event->key = key_code::mouse_middle;
 			break;
 		case 2:
-			event->key = TB_KEY_MOUSE_RIGHT;
+			event->key = key_code::mouse_right;
 			break;
 		case 3:
-			event->key = TB_KEY_MOUSE_RELEASE;
+			event->key = key_code::mouse_release;
 			break;
 		default:
 			return -6;
@@ -97,23 +97,23 @@ static int parse_mouse_event(struct tb_event *event, const char *buf, int len) {
 		switch (n1 & 3) {
 		case 0:
 			if ((n1&64) != 0) {
-				event->key = TB_KEY_MOUSE_WHEEL_UP;
+				event->key = key_code::mouse_wheel_up;
 			} else {
-				event->key = TB_KEY_MOUSE_LEFT;
+				event->key = key_code::mouse_left;
 			}
 			break;
 		case 1:
 			if ((n1&64) != 0) {
-				event->key = TB_KEY_MOUSE_WHEEL_DOWN;
+				event->key = key_code::mouse_wheel_down;
 			} else {
-				event->key = TB_KEY_MOUSE_MIDDLE;
+				event->key = key_code::mouse_middle;
 			}
 			break;
 		case 2:
-			event->key = TB_KEY_MOUSE_RIGHT;
+			event->key = key_code::mouse_right;
 			break;
 		case 3:
-			event->key = TB_KEY_MOUSE_RELEASE;
+			event->key = key_code::mouse_release;
 			break;
 		default:
 			return mi + 1;
@@ -121,7 +121,7 @@ static int parse_mouse_event(struct tb_event *event, const char *buf, int len) {
 
 		if (!isM) {
 			// on xterm mouse release is signaled by lowercase m
-			event->key = TB_KEY_MOUSE_RELEASE;
+			event->key = key_code::mouse_release;
 		}
 
 		event->type = TB_EVENT_MOUSE; // TB_EVENT_KEY by default
@@ -151,7 +151,7 @@ static int parse_escape_seq(struct tb_event *event, const char *buf, int len)
 	for (i = 0; keys[i]; i++) {
 		if (starts_with(buf, len, keys[i])) {
 			event->ch = 0;
-			event->key = 0xFFFF-i;
+			event->key = (key_code)(0xFFFF-i);
 			return strlen(keys[i]);
 		}
 	}
@@ -182,7 +182,7 @@ static bool extract_event(struct tb_event *event, struct bytebuffer *inbuf, int 
 				// if we're in escape mode, fill ESC event, pop
 				// buffer, return success
 				event->ch = 0;
-				event->key = TB_KEY_ESC;
+				event->key = key_code::esc;
 				event->mod = 0;
 				bytebuffer_truncate(inbuf, 1);
 				return true;
@@ -201,12 +201,12 @@ static bool extract_event(struct tb_event *event, struct bytebuffer *inbuf, int 
 	// so, it's a FUNCTIONAL KEY or a UNICODE character
 
 	// first of all check if it's a functional key
-	if ((unsigned char)buf[0] <= TB_KEY_SPACE ||
-	    (unsigned char)buf[0] == TB_KEY_BACKSPACE2)
+	if ((key_code)buf[0] <= key_code::space ||
+	    (key_code)buf[0] == key_code::backspace2)
 	{
 		// fill event, pop buffer, return success */
 		event->ch = 0;
-		event->key = (uint16_t)buf[0];
+		event->key = (key_code)buf[0];
 		bytebuffer_truncate(inbuf, 1);
 		return true;
 	}
@@ -217,7 +217,7 @@ static bool extract_event(struct tb_event *event, struct bytebuffer *inbuf, int 
 	if (len >= tb_utf8_char_length(buf[0])) {
 		/* everything ok, fill event, pop buffer, return success */
 		tb_utf8_char_to_unicode(&event->ch, buf);
-		event->key = 0;
+		event->key = (key_code)0;
 		bytebuffer_truncate(inbuf, tb_utf8_char_length(buf[0]));
 		return true;
 	}
