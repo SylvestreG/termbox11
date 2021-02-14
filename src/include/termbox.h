@@ -149,9 +149,13 @@ struct tb_cell {
   uint16_t bg;
 };
 
-#define TB_EVENT_KEY 1
-#define TB_EVENT_RESIZE 2
-#define TB_EVENT_MOUSE 3
+enum class event_type {
+  none,
+  key,
+  resize,
+  mouse,
+  error
+};
 
 /* An event, single interaction from the user. The 'mod' and 'ch' fields are
  * valid if 'type' is TB_EVENT_KEY. The 'w' and 'h' fields are valid if 'type'
@@ -161,7 +165,7 @@ struct tb_cell {
  * one of them can be non-zero at a time.
  */
 struct tb_event {
-  uint8_t type;
+  event_type type;
   modifiers mod;  /* modifiers to either 'key' or 'ch' below */
   key_code key; /* one of the TB_KEY_* constants */
   uint32_t ch;  /* unicode character */
@@ -311,13 +315,13 @@ int tb_select_output_mode(int mode);
  * event (one of TB_EVENT_* constants) or -1 if there was an error or 0 in case
  * there were no event during 'timeout' period.
  */
-int tb_peek_event(struct tb_event *event, int timeout);
+event_type tb_peek_event(struct tb_event *event, int timeout);
 
 /* Wait for an event forever and fill the 'event' structure with it, when the
  * event is available. Returns the type of the event (one of TB_EVENT_*
  * constants) or -1 if there was an error.
  */
-int tb_poll_event(struct tb_event *event);
+event_type tb_poll_event(struct tb_event *event);
 
 /* Utility utf8 functions. */
 #define TB_EOF -1

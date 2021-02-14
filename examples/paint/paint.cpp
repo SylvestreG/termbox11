@@ -111,28 +111,30 @@ int main(int argv, char **argc) {
     struct tb_event ev;
     int mx = -1;
     int my = -1;
-    int t = tb_poll_event(&ev);
-    if (t == -1) {
+    event_type t = tb_poll_event(&ev);
+    if (t == event_type::error) {
       tb_shutdown();
       fprintf(stderr, "termbox poll event error\n");
       return -1;
     }
 
     switch (t) {
-    case TB_EVENT_KEY:
+    case event_type::key:
       if (ev.key == key_code::esc) {
         tb_shutdown();
         return 0;
       }
       break;
-    case TB_EVENT_MOUSE:
+    case event_type::mouse:
       if (ev.key == key_code::mouse_left) {
         mx = ev.x;
         my = ev.y;
       }
       break;
-    case TB_EVENT_RESIZE:
+    case event_type::resize:
       reallocBackBuffer(ev.w, ev.h);
+      break;
+    default:
       break;
     }
     updateAndRedrawAll(mx, my);

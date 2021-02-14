@@ -39,7 +39,7 @@ static int parse_mouse_event(struct tb_event *event, const char *buf, int len) {
 		default:
 			return -6;
 		}
-		event->type = TB_EVENT_MOUSE; // TB_EVENT_KEY by default
+		event->type = event_type::mouse; // TB_EVENT_KEY by default
 		if ((b & 32) != 0)
 			event->mod |= modifiers::motion;
 
@@ -124,7 +124,7 @@ static int parse_mouse_event(struct tb_event *event, const char *buf, int len) {
 			event->key = key_code::mouse_release;
 		}
 
-		event->type = TB_EVENT_MOUSE; // TB_EVENT_KEY by default
+		event->type = event_type::mouse; // TB_EVENT_KEY by default
 		if ((n1&32) != 0)
 			event->mod |= modifiers::motion;
 

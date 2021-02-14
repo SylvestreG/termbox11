@@ -67,7 +67,7 @@ static void send_attr(uint16_t fg, uint16_t bg);
 static void send_char(int x, int y, uint32_t c);
 static void send_clear(void);
 static void sigwinch_handler(int xxx);
-static int wait_fill_event(struct tb_event *event, struct timeval *timeout);
+static event_type wait_fill_event(struct tb_event *event, struct timeval *timeout);
 
 /* may happen in a different thread */
 static volatile int buffer_size_change_request;
@@ -298,9 +298,9 @@ struct tb_cell *tb_cell_buffer(void) {
   return back_buffer.cells;
 }
 
-int tb_poll_event(struct tb_event *event) { return wait_fill_event(event, 0); }
+event_type tb_poll_event(struct tb_event *event) { return wait_fill_event(event, 0); }
 
-int tb_peek_event(struct tb_event *event, int timeout) {
+event_type tb_peek_event(struct tb_event *event, int timeout) {
   struct timeval tv;
   tv.tv_sec = timeout / 1000;
   tv.tv_usec = (timeout - (tv.tv_sec * 1000)) * 1000;
@@ -627,14 +627,14 @@ static int read_up_to(int n) {
   return 0;
 }
 
-static int wait_fill_event(struct tb_event *event, struct timeval *timeout) {
+static event_type wait_fill_event(struct tb_event *event, struct timeval *timeout) {
   // ;-)
 #define ENOUGH_DATA_FOR_PARSING 64
   fd_set events;
   memset(event, 0, sizeof(struct tb_event));
 
   // try to extract event from input buffer, return on success
-  event->type = TB_EVENT_KEY;
+  event->type = event_type::key;
   if (extract_event(event, &input_buffer, inputmode))
     return event->type;
 
@@ -642,7 +642,7 @@ static int wait_fill_event(struct tb_event *event, struct timeval *timeout) {
   // but first make sure there is enough space
   int n = read_up_to(ENOUGH_DATA_FOR_PARSING);
   if (n < 0)
-    return -1;
+    return event_type::error;
   if (n > 0 && extract_event(event, &input_buffer, inputmode))
     return event->type;
 
@@ -654,13 +654,13 @@ static int wait_fill_event(struct tb_event *event, struct timeval *timeout) {
     int maxfd = (winch_fds[0] > inout) ? winch_fds[0] : inout;
     int result = select(maxfd + 1, &events, 0, 0, timeout);
     if (!result)
-      return 0;
+      return event_type::none;
 
     if (FD_ISSET(inout, &events)) {
-      event->type = TB_EVENT_KEY;
+      event->type = event_type::key;
       n = read_up_to(ENOUGH_DATA_FOR_PARSING);
       if (n < 0)
-        return -1;
+        return event_type::error;
 
       if (n == 0)
         continue;
@@ -669,12 +669,12 @@ static int wait_fill_event(struct tb_event *event, struct timeval *timeout) {
         return event->type;
     }
     if (FD_ISSET(winch_fds[0], &events)) {
-      event->type = TB_EVENT_RESIZE;
+      event->type = event_type::resize;
       int zzz = 0;
       read(winch_fds[0], &zzz, sizeof(int));
       buffer_size_change_request = 1;
       get_term_size(&event->w, &event->h);
-      return TB_EVENT_RESIZE;
+      return event_type::resize;
     }
   }
 }

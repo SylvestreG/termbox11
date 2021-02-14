@@ -585,7 +585,7 @@ void pretty_print_press(struct tb_event *ev) {
   printf_tb(60, 22, TB_RED, TB_DEFAULT, "string:  %s", buf);
 
   printf_tb(54, 18, TB_WHITE, TB_DEFAULT, "Modifier: %s",
-            (ev->mod) ? "TB_MOD_ALT" : "none");
+            (ev->mod != modifiers::none) ? "TB_MOD_ALT" : "none");
 }
 
 void pretty_print_resize(struct tb_event *ev) {
@@ -624,7 +624,7 @@ void pretty_print_mouse(struct tb_event *ev) {
 }
 
 void dispatch_press(struct tb_event *ev) {
-  if (ev->mod & TB_MOD_ALT) {
+  if (ev->mod == modifiers::alt || ev->mod == modifiers::both) {
     draw_key(K_LALT, TB_WHITE, TB_RED);
     draw_key(K_RALT, TB_WHITE, TB_RED);
   }
@@ -668,9 +668,9 @@ int main(int argc, char **argv) {
   int inputmode = 0;
   int ctrlxpressed = 0;
 
-  while (tb_poll_event(&ev)) {
+  while (tb_poll_event(&ev) != event_type::none) {
     switch (ev.type) {
-    case TB_EVENT_KEY:
+    case event_type::key:
       if (ev.key == key_code::ctrl_q && ctrlxpressed) {
         tb_shutdown();
         return 0;
@@ -699,13 +699,13 @@ int main(int argc, char **argv) {
       pretty_print_press(&ev);
       tb_present();
       break;
-    case TB_EVENT_RESIZE:
+    case event_type::resize:
       tb_clear();
       draw_keyboard();
       pretty_print_resize(&ev);
       tb_present();
       break;
-    case TB_EVENT_MOUSE:
+    case event_type::mouse:
       tb_clear();
       draw_keyboard();
       pretty_print_mouse(&ev);

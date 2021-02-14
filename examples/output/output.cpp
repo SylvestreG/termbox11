@@ -98,9 +98,9 @@ int main(int argc, char **argv) {
   draw_all();
 
   struct tb_event ev;
-  while (tb_poll_event(&ev)) {
+  while (tb_poll_event(&ev) != event_type::none) {
     switch (ev.type) {
-    case TB_EVENT_KEY:
+    case event_type::key:
       switch (ev.key) {
       case key_code::esc:
         goto done;
@@ -109,8 +109,10 @@ int main(int argc, char **argv) {
         break;
       }
       break;
-    case TB_EVENT_RESIZE:
+    case event_type::resize:
       draw_all();
+      break;
+    default:
       break;
     }
   }
