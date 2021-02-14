@@ -41,7 +41,7 @@ static int parse_mouse_event(struct tb_event *event, const char *buf, int len) {
 		}
 		event->type = TB_EVENT_MOUSE; // TB_EVENT_KEY by default
 		if ((b & 32) != 0)
-			event->mod |= TB_MOD_MOTION;
+			event->mod |= modifiers::motion;
 
 		// the coord is 1,1 for upper left
 		event->x = (uint8_t)buf[4] - 1 - 32;
@@ -126,7 +126,7 @@ static int parse_mouse_event(struct tb_event *event, const char *buf, int len) {
 
 		event->type = TB_EVENT_MOUSE; // TB_EVENT_KEY by default
 		if ((n1&32) != 0)
-			event->mod |= TB_MOD_MOTION;
+			event->mod |= modifiers::motion;
 
 		event->x = (uint8_t)n2 - 1;
 		event->y = (uint8_t)n3 - 1;
@@ -183,13 +183,13 @@ static bool extract_event(struct tb_event *event, struct bytebuffer *inbuf, int 
 				// buffer, return success
 				event->ch = 0;
 				event->key = key_code::esc;
-				event->mod = 0;
+				event->mod = modifiers::none;
 				bytebuffer_truncate(inbuf, 1);
 				return true;
 			} else if (inputmode&TB_INPUT_ALT) {
 				// if we're in alt mode, set ALT modifier to
 				// event and redo parsing
-				event->mod = TB_MOD_ALT;
+				event->mod = modifiers::alt;
 				bytebuffer_truncate(inbuf, 1);
 				return extract_event(event, inbuf, inputmode);
 			}

@@ -13,8 +13,8 @@
 #include <termios.h>
 #include <unistd.h>
 #include <wchar.h>
-
 #include "termbox.h"
+
 #include "term.inl"
 #include "bytebuffer.inl"
 #include "input.inl"
@@ -71,6 +71,34 @@ static int wait_fill_event(struct tb_event *event, struct timeval *timeout);
 
 /* may happen in a different thread */
 static volatile int buffer_size_change_request;
+
+modifiers &operator|=(modifiers &lhs, modifiers rhs)
+{
+  switch (lhs) {
+  case modifiers::both:
+    break;
+  case modifiers::none:
+    lhs = rhs;
+    break;
+  case modifiers::alt:
+    switch (rhs) {
+    case modifiers::motion:
+      lhs = modifiers::both;
+      break;
+    default:
+      break;
+    }
+  case modifiers::motion:
+    switch (rhs) {
+    case modifiers::alt:
+      lhs = modifiers::both;
+    default:
+      break;
+    }
+  }
+
+  return lhs;
+}
 
 /* -------------------------------------------------------- */
 

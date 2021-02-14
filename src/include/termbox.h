@@ -108,8 +108,14 @@ enum class key_code : std::uint16_t {
  * Alt modifier constant, see tb_event.mod field and tb_select_input_mode
  * function. Mouse-motion modifier
  */
-#define TB_MOD_ALT 0x01
-#define TB_MOD_MOTION 0x02
+enum class modifiers : std::uint8_t {
+  none = 0x00,
+  alt = 0x01,
+  motion = 0x02,
+  both = 0x03
+};
+
+modifiers &operator|=(modifiers &lhs, modifiers rhs);
 
 /* Colors (see struct tb_cell's fg and bg fields). */
 #define TB_DEFAULT 0x00
@@ -156,7 +162,7 @@ struct tb_cell {
  */
 struct tb_event {
   uint8_t type;
-  uint8_t mod;  /* modifiers to either 'key' or 'ch' below */
+  modifiers mod;  /* modifiers to either 'key' or 'ch' below */
   key_code key; /* one of the TB_KEY_* constants */
   uint32_t ch;  /* unicode character */
   int32_t w;
