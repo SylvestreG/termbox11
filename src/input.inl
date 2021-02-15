@@ -158,7 +158,7 @@ static int parse_escape_seq(struct tb_event *event, const char *buf, int len)
 	return 0;
 }
 
-static bool extract_event(struct tb_event *event, struct bytebuffer *inbuf, int inputmode)
+static bool extract_event(struct tb_event *event, struct bytebuffer *inbuf, input_mode inputmode)
 {
 	const char *buf = inbuf->buf;
 	const int len = inbuf->len;
@@ -178,7 +178,7 @@ static bool extract_event(struct tb_event *event, struct bytebuffer *inbuf, int 
 		} else {
 			// it's not escape sequence, then it's ALT or ESC,
 			// check inputmode
-			if (inputmode&TB_INPUT_ESC) {
+			if (inputmode.escaped) {
 				// if we're in escape mode, fill ESC event, pop
 				// buffer, return success
 				event->ch = 0;
@@ -186,7 +186,7 @@ static bool extract_event(struct tb_event *event, struct bytebuffer *inbuf, int 
 				event->mod = modifiers::none;
 				bytebuffer_truncate(inbuf, 1);
 				return true;
-			} else if (inputmode&TB_INPUT_ALT) {
+			} else if (inputmode.alt) {
 				// if we're in alt mode, set ALT modifier to
 				// event and redo parsing
 				event->mod = modifiers::alt;
