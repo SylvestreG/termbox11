@@ -89,34 +89,36 @@ static void draw_all() {
 int main(int argc, char **argv) {
   (void)argc;
   (void)argv;
-  int ret = tb_init();
-  if (ret) {
-    fprintf(stderr, "tb_init() failed with error code %d\n", ret);
-    return 1;
-  }
 
-  draw_all();
+  try {
+    auto tb = termbox11();
 
-  struct tb_event ev;
-  while (tb_poll_event(&ev) != event_type::none) {
-    switch (ev.type) {
-    case event_type::key:
-      switch (ev.key) {
-      case key_code::esc:
-        goto done;
+    draw_all();
+
+    struct tb_event ev;
+    while (tb_poll_event(&ev) != event_type::none) {
+      switch (ev.type) {
+      case event_type::key:
+        switch (ev.key) {
+        case key_code::esc:
+          goto done;
+          break;
+        default:
+          break;
+        }
+        break;
+      case event_type::resize:
+        draw_all();
         break;
       default:
         break;
       }
-      break;
-    case event_type::resize:
-      draw_all();
-      break;
-    default:
-      break;
     }
+  done:
+
+    return 0;
+  } catch (std::exception const &ex) {
+    fprintf(stderr, "tb_init() failed with error code %s\n", ex.what());
+    return 1;
   }
-done:
-  tb_shutdown();
-  return 0;
 }

@@ -38,7 +38,7 @@ static struct bytebuffer input_buffer;
 static int termw = -1;
 static int termh = -1;
 
-static input_mode inputmode{ true, false, false };
+static input_mode inputmode{true, false, false};
 static output_mode outputmode = output_mode::normal;
 
 static int inout;
@@ -101,89 +101,7 @@ modifiers &operator|=(modifiers &lhs, modifiers rhs) {
 
 /* -------------------------------------------------------- */
 
-int tb_init_fd(int inout_) {
-  inout = inout_;
-  if (inout == -1) {
-    return TB_EFAILED_TO_OPEN_TTY;
-  }
-
-  if (init_term() < 0) {
-    close(inout);
-    return TB_EUNSUPPORTED_TERMINAL;
-  }
-
-  if (pipe(winch_fds) < 0) {
-    close(inout);
-    return TB_EPIPE_TRAP_ERROR;
-  }
-
-  struct sigaction sa;
-  memset(&sa, 0, sizeof(sa));
-  sa.sa_handler = sigwinch_handler;
-  sa.sa_flags = 0;
-  sigaction(SIGWINCH, &sa, 0);
-
-  tcgetattr(inout, &orig_tios);
-
-  struct termios tios;
-  memcpy(&tios, &orig_tios, sizeof(tios));
-
-  tios.c_iflag &=
-      ~(IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL | IXON);
-  tios.c_oflag &= ~OPOST;
-  tios.c_lflag &= ~(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
-  tios.c_cflag &= ~(CSIZE | PARENB);
-  tios.c_cflag |= CS8;
-  tios.c_cc[VMIN] = 0;
-  tios.c_cc[VTIME] = 0;
-  tcsetattr(inout, TCSAFLUSH, &tios);
-
-  bytebuffer_init(&input_buffer, 128);
-  bytebuffer_init(&output_buffer, 32 * 1024);
-
-  bytebuffer_puts(&output_buffer, funcs[T_ENTER_CA]);
-  bytebuffer_puts(&output_buffer, funcs[T_ENTER_KEYPAD]);
-  bytebuffer_puts(&output_buffer, funcs[T_HIDE_CURSOR]);
-  send_clear();
-
-  update_term_size();
-  cellbuf_init(&back_buffer, termw, termh);
-  cellbuf_init(&front_buffer, termw, termh);
-  cellbuf_clear(&back_buffer);
-  cellbuf_clear(&front_buffer);
-
-  return 0;
-}
-
-int tb_init_file(const char *name) { return tb_init_fd(open(name, O_RDWR)); }
-
-int tb_init(void) { return tb_init_file("/dev/tty"); }
-
 void tb_shutdown(void) {
-  if (termw == -1) {
-    fputs("tb_shutdown() should not be called twice.", stderr);
-    abort();
-  }
-
-  bytebuffer_puts(&output_buffer, funcs[T_SHOW_CURSOR]);
-  bytebuffer_puts(&output_buffer, funcs[T_SGR0]);
-  bytebuffer_puts(&output_buffer, funcs[T_CLEAR_SCREEN]);
-  bytebuffer_puts(&output_buffer, funcs[T_EXIT_CA]);
-  bytebuffer_puts(&output_buffer, funcs[T_EXIT_KEYPAD]);
-  bytebuffer_puts(&output_buffer, funcs[T_EXIT_MOUSE]);
-  bytebuffer_flush(&output_buffer, inout);
-  tcsetattr(inout, TCSAFLUSH, &orig_tios);
-
-  shutdown_term();
-  close(inout);
-  close(winch_fds[0]);
-  close(winch_fds[1]);
-
-  cellbuf_free(&back_buffer);
-  cellbuf_free(&front_buffer);
-  bytebuffer_free(&output_buffer);
-  bytebuffer_free(&input_buffer);
-  termw = termh = -1;
 }
 
 void tb_present(void) {
@@ -321,27 +239,25 @@ void tb_clear(void) {
 }
 
 void tb_select_input_mode(input_mode mode) {
-    if (!mode.escaped && !mode.alt)
-      mode.escaped = true;
+  if (!mode.escaped && !mode.alt)
+    mode.escaped = true;
 
-    /* technically termbox can handle that, but let's be nice and show here
-       what mode is actually used */
-    if (mode.escaped && mode.alt)
-      mode.alt = false;
+  /* technically termbox can handle that, but let's be nice and show here
+     what mode is actually used */
+  if (mode.escaped && mode.alt)
+    mode.alt = false;
 
-    inputmode = mode;
-    if (mode.mouse) {
-      bytebuffer_puts(&output_buffer, funcs[T_ENTER_MOUSE]);
-      bytebuffer_flush(&output_buffer, inout);
-    } else {
-      bytebuffer_puts(&output_buffer, funcs[T_EXIT_MOUSE]);
-      bytebuffer_flush(&output_buffer, inout);
-    }
+  inputmode = mode;
+  if (mode.mouse) {
+    bytebuffer_puts(&output_buffer, funcs[T_ENTER_MOUSE]);
+    bytebuffer_flush(&output_buffer, inout);
+  } else {
+    bytebuffer_puts(&output_buffer, funcs[T_EXIT_MOUSE]);
+    bytebuffer_flush(&output_buffer, inout);
+  }
 }
 
-input_mode tb_get_input_mode() {
-  return inputmode;
-}
+input_mode tb_get_input_mode() { return inputmode; }
 
 output_mode tb_select_output_mode(output_mode mode) {
   if (mode != output_mode::current)
@@ -681,3 +597,90 @@ static event_type wait_fill_event(struct tb_event *event,
     }
   }
 }
+
+termbox11::termbox11() : termbox11("/dev/tty") {}
+
+termbox11::termbox11(std::string name)
+    : termbox11(open(name.c_str(), O_RDWR)) {}
+
+termbox11::termbox11(int fd) {
+  inout = fd;
+  if (inout == -1) {
+    throw std::runtime_error("failed to open tty");
+  }
+
+  if (init_term() < 0) {
+    close(inout);
+    throw std::runtime_error("unsupported terminal");
+  }
+
+  if (pipe(winch_fds) < 0) {
+    close(inout);
+    throw std::runtime_error("epipe trap");
+  }
+
+  struct sigaction sa;
+  memset(&sa, 0, sizeof(sa));
+  sa.sa_handler = sigwinch_handler;
+  sa.sa_flags = 0;
+  sigaction(SIGWINCH, &sa, 0);
+
+  tcgetattr(inout, &orig_tios);
+
+  struct termios tios;
+  memcpy(&tios, &orig_tios, sizeof(tios));
+
+  tios.c_iflag &=
+      ~(IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL | IXON);
+  tios.c_oflag &= ~OPOST;
+  tios.c_lflag &= ~(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
+  tios.c_cflag &= ~(CSIZE | PARENB);
+  tios.c_cflag |= CS8;
+  tios.c_cc[VMIN] = 0;
+  tios.c_cc[VTIME] = 0;
+  tcsetattr(inout, TCSAFLUSH, &tios);
+
+  bytebuffer_init(&input_buffer, 128);
+  bytebuffer_init(&output_buffer, 32 * 1024);
+
+  bytebuffer_puts(&output_buffer, funcs[T_ENTER_CA]);
+  bytebuffer_puts(&output_buffer, funcs[T_ENTER_KEYPAD]);
+  bytebuffer_puts(&output_buffer, funcs[T_HIDE_CURSOR]);
+  send_clear();
+
+  update_term_size();
+  cellbuf_init(&back_buffer, termw, termh);
+  cellbuf_init(&front_buffer, termw, termh);
+  cellbuf_clear(&back_buffer);
+  cellbuf_clear(&front_buffer);
+}
+
+termbox11::~termbox11() {
+  if (termw == -1) {
+    fputs("tb_shutdown() should not be called twice.", stderr);
+    abort();
+  }
+
+  bytebuffer_puts(&output_buffer, funcs[T_SHOW_CURSOR]);
+  bytebuffer_puts(&output_buffer, funcs[T_SGR0]);
+  bytebuffer_puts(&output_buffer, funcs[T_CLEAR_SCREEN]);
+  bytebuffer_puts(&output_buffer, funcs[T_EXIT_CA]);
+  bytebuffer_puts(&output_buffer, funcs[T_EXIT_KEYPAD]);
+  bytebuffer_puts(&output_buffer, funcs[T_EXIT_MOUSE]);
+  bytebuffer_flush(&output_buffer, inout);
+  tcsetattr(inout, TCSAFLUSH, &orig_tios);
+
+  shutdown_term();
+  close(inout);
+  close(winch_fds[0]);
+  close(winch_fds[1]);
+
+  cellbuf_free(&back_buffer);
+  cellbuf_free(&front_buffer);
+  bytebuffer_free(&output_buffer);
+  bytebuffer_free(&input_buffer);
+  termw = termh = -1;
+}
+
+size_t termbox11::width() const { return termw; }
+size_t termbox11::height() const { return termh; }

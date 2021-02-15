@@ -72,14 +72,14 @@ void colorAttrFunc(int i, uint32_t *r, uint16_t *fg, uint16_t *bg) {
   *bg = colors[i];
 }
 
-void updateAndRedrawAll(int mx, int my) {
+void updateAndRedrawAll(termbox11 const &tb, int mx, int my) {
   tb_clear();
   if (mx != -1 && my != -1) {
     backbuf[bbw * my + mx].ch = runes[curRune];
     backbuf[bbw * my + mx].fg = colors[curCol];
   }
   memcpy(tb_cell_buffer(), backbuf, sizeof(struct tb_cell) * bbw * bbh);
-  int h = tb_height();
+  int h = tb.height();
   updateAndDrawButtons(&curRune, 0, 0, mx, my, len(runes), runeAttrFunc);
   updateAndDrawButtons(&curCol, 0, h - 3, mx, my, len(colors), colorAttrFunc);
   tb_present();
@@ -93,27 +93,25 @@ void reallocBackBuffer(int w, int h) {
   backbuf = (struct tb_cell *)calloc(sizeof(struct tb_cell), w * h);
 }
 
+
+
 int main(int argv, char **argc) {
   (void)argc;
   (void)argv;
-  int code = tb_init();
-  if (code < 0) {
-    fprintf(stderr, "termbox init failed, code: %d\n", code);
-    return -1;
-  }
+  try {
+    auto tb = termbox11();
 
   tb_select_input_mode({.escaped = true, .mouse = true});
-  int w = tb_width();
-  int h = tb_height();
+  int w = tb.width();
+  int h = tb.height();
   reallocBackBuffer(w, h);
-  updateAndRedrawAll(-1, -1);
+  updateAndRedrawAll(tb, -1, -1);
   for (;;) {
     struct tb_event ev;
     int mx = -1;
     int my = -1;
     event_type t = tb_poll_event(&ev);
     if (t == event_type::error) {
-      tb_shutdown();
       fprintf(stderr, "termbox poll event error\n");
       return -1;
     }
@@ -121,7 +119,6 @@ int main(int argv, char **argc) {
     switch (t) {
     case event_type::key:
       if (ev.key == key_code::esc) {
-        tb_shutdown();
         return 0;
       }
       break;
@@ -137,6 +134,10 @@ int main(int argv, char **argc) {
     default:
       break;
     }
-    updateAndRedrawAll(mx, my);
+    updateAndRedrawAll(tb, mx, my);
+  }
+  } catch (std::exception const& e) {
+    fprintf(stderr, "termbox init failed, code: %s\n", e.what());
+    return -1;
   }
 }

@@ -1,6 +1,7 @@
 #ifndef __TERMBOX_H__
 #define __TERMBOX_H__
 
+#include <string>
 #include <cstdint>
 
 /* Key constants. See also struct tb_event's key field.
@@ -189,19 +190,18 @@ struct tb_event {
  * After successful initialization, the library must be
  * finalized using the tb_shutdown() function.
  */
-int tb_init(void);
-int tb_init_file(const char *name);
-int tb_init_fd(int inout);
-void tb_shutdown(void);
+class termbox11 {
+public:
+  termbox11();
+  termbox11(std::string name);
+  termbox11(int fd);
+  ~termbox11();
 
-/* Returns the size of the internal back buffer (which is the same as
- * terminal's window size in characters). The internal buffer can be resized
- * after tb_clear() or tb_present() function calls. Both dimensions have an
- * unspecified negative value when called before tb_init() or after
- * tb_shutdown().
- */
-int tb_width(void);
-int tb_height(void);
+  size_t width() const;
+  size_t height() const;
+private:
+};
+
 
 /* Clears the internal back buffer using TB_DEFAULT color or the
  * color/attributes set by tb_set_clear_attributes() function.

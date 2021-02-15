@@ -651,70 +651,69 @@ void dispatch_press(struct tb_event *ev) {
 int main(int argc, char **argv) {
   (void)argc;
   (void)argv;
-  int ret;
 
-  ret = tb_init();
-  if (ret) {
-    fprintf(stderr, "tb_init() failed with error code %d\n", ret);
+  try {
+    auto tb = termbox11();
+
+    tb_select_input_mode({.escaped = true, .mouse = true});
+    struct tb_event ev;
+
+    tb_clear();
+    draw_keyboard();
+    tb_present();
+    int inputmode = 0;
+    int ctrlxpressed = 0;
+
+    while (tb_poll_event(&ev) != event_type::none) {
+      switch (ev.type) {
+      case event_type::key:
+        if (ev.key == key_code::ctrl_q && ctrlxpressed) {
+          return 0;
+        }
+        if (ev.key == key_code::ctrl_c && ctrlxpressed) {
+          static input_mode chmap[] = {
+              {.escaped = true, .mouse = true}, /* 101 */
+              {.alt = true, .mouse = true},     /* 110 */
+              {.escaped = true},                /* 001 */
+              {.alt = true},                    /* 010 */
+          };
+          inputmode++;
+          if (inputmode >= 4) {
+            inputmode = 0;
+          }
+          tb_select_input_mode(chmap[inputmode]);
+        }
+        if (ev.key == key_code::ctrl_x)
+          ctrlxpressed = 1;
+        else
+          ctrlxpressed = 0;
+
+        tb_clear();
+        draw_keyboard();
+        dispatch_press(&ev);
+        pretty_print_press(&ev);
+        tb_present();
+        break;
+      case event_type::resize:
+        tb_clear();
+        draw_keyboard();
+        pretty_print_resize(&ev);
+        tb_present();
+        break;
+      case event_type::mouse:
+        tb_clear();
+        draw_keyboard();
+        pretty_print_mouse(&ev);
+        tb_present();
+        break;
+      default:
+        break;
+      }
+    }
+
+  } catch (std::exception const &ex) {
+    fprintf(stderr, "tb_init() failed with error code %s\n", ex.what());
     return 1;
   }
-
-  tb_select_input_mode({.escaped = true, .mouse = true});
-  struct tb_event ev;
-
-  tb_clear();
-  draw_keyboard();
-  tb_present();
-  int inputmode = 0;
-  int ctrlxpressed = 0;
-
-  while (tb_poll_event(&ev) != event_type::none) {
-    switch (ev.type) {
-    case event_type::key:
-      if (ev.key == key_code::ctrl_q && ctrlxpressed) {
-        tb_shutdown();
-        return 0;
-      }
-      if (ev.key == key_code::ctrl_c && ctrlxpressed) {
-        static input_mode chmap[] = {
-            {.escaped = true, .mouse = true}, /* 101 */
-            {.alt = true, .mouse = true},     /* 110 */
-            {.escaped = true},                /* 001 */
-            {.alt = true},                    /* 010 */
-        };
-        inputmode++;
-        if (inputmode >= 4) {
-          inputmode = 0;
-        }
-        tb_select_input_mode(chmap[inputmode]);
-      }
-      if (ev.key == key_code::ctrl_x)
-        ctrlxpressed = 1;
-      else
-        ctrlxpressed = 0;
-
-      tb_clear();
-      draw_keyboard();
-      dispatch_press(&ev);
-      pretty_print_press(&ev);
-      tb_present();
-      break;
-    case event_type::resize:
-      tb_clear();
-      draw_keyboard();
-      pretty_print_resize(&ev);
-      tb_present();
-      break;
-    case event_type::mouse:
-      tb_clear();
-      draw_keyboard();
-      pretty_print_mouse(&ev);
-      tb_present();
-      break;
-    default:
-      break;
-    }
-  }
-  tb_shutdown();
   return 0;
 }
