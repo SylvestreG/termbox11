@@ -46,7 +46,7 @@ static void print_combinations_table(int sx, int sy, const uint16_t *attrs,
 static void draw_all() {
   tb_clear();
 
-en  tb_select_output_mode(output_mode::normal);
+  tb_select_output_mode(output_mode::normal);
   static const uint16_t col1[] = {0, TB_BOLD};
   static const uint16_t col2[] = {TB_REVERSE};
   print_combinations_table(1, 1, col1, 2);

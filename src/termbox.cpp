@@ -38,7 +38,7 @@ static struct bytebuffer input_buffer;
 static int termw = -1;
 static int termh = -1;
 
-static int inputmode = TB_INPUT_ESC;
+static input_mode inputmode{ true, false, false };
 static output_mode outputmode = output_mode::normal;
 
 static int inout;
@@ -320,25 +320,26 @@ void tb_clear(void) {
   cellbuf_clear(&back_buffer);
 }
 
-int tb_select_input_mode(int mode) {
-  if (mode) {
-    if ((mode & (TB_INPUT_ESC | TB_INPUT_ALT)) == 0)
-      mode |= TB_INPUT_ESC;
+void tb_select_input_mode(input_mode mode) {
+    if (!mode.escaped && !mode.alt)
+      mode.escaped = true;
 
     /* technically termbox can handle that, but let's be nice and show here
        what mode is actually used */
-    if ((mode & (TB_INPUT_ESC | TB_INPUT_ALT)) == (TB_INPUT_ESC | TB_INPUT_ALT))
-      mode &= ~TB_INPUT_ALT;
+    if (mode.escaped && mode.alt)
+      mode.alt = false;
 
     inputmode = mode;
-    if (mode & TB_INPUT_MOUSE) {
+    if (mode.mouse) {
       bytebuffer_puts(&output_buffer, funcs[T_ENTER_MOUSE]);
       bytebuffer_flush(&output_buffer, inout);
     } else {
       bytebuffer_puts(&output_buffer, funcs[T_EXIT_MOUSE]);
       bytebuffer_flush(&output_buffer, inout);
     }
-  }
+}
+
+input_mode tb_get_input_mode() {
   return inputmode;
 }
 

@@ -242,10 +242,11 @@ void tb_blit(int x, int y, int w, int h, const struct tb_cell *cells);
  */
 struct tb_cell *tb_cell_buffer(void);
 
-#define TB_INPUT_CURRENT 0 /* 000 */
-#define TB_INPUT_ESC 1 /* 001 */
-#define TB_INPUT_ALT 2 /* 010 */
-#define TB_INPUT_MOUSE 4 /* 100 */
+struct input_mode {
+  bool escaped{false};
+  bool alt{false};
+  bool mouse{false};
+};
 
 /* Sets the termbox input mode. Termbox has two input modes:
  * 1. Esc input mode.
@@ -265,7 +266,8 @@ struct tb_cell *tb_cell_buffer(void);
  *
  * Default termbox input mode is TB_INPUT_ESC.
  */
-int tb_select_input_mode(int mode);
+void tb_select_input_mode(input_mode mode);
+input_mode tb_get_input_mode();
 
 enum class output_mode {
   current,

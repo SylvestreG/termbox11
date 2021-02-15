@@ -506,15 +506,15 @@ void draw_keyboard() {
   printf_tb(15, 3, TB_MAGENTA, TB_DEFAULT,
             "(press CTRL+X and then CTRL+C to change input mode)");
 
-  int inputmode = tb_select_input_mode(0);
+  input_mode inputmode = tb_get_input_mode();
   char inputmode_str[64];
 
-  if (inputmode & TB_INPUT_ESC)
+  if (inputmode.escaped)
     sprintf(inputmode_str, "TB_INPUT_ESC");
-  if (inputmode & TB_INPUT_ALT)
+  if (inputmode.alt)
     sprintf(inputmode_str, "TB_INPUT_ALT");
 
-  if (inputmode & TB_INPUT_MOUSE)
+  if (inputmode.mouse)
     sprintf(inputmode_str, "%s | TB_INPUT_MOUSE", inputmode_str);
 
   printf_tb(3, 18, TB_WHITE, TB_DEFAULT, "Input mode: %s", inputmode_str);
@@ -659,7 +659,7 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  tb_select_input_mode(TB_INPUT_ESC | TB_INPUT_MOUSE);
+  tb_select_input_mode({.escaped = true, .mouse = true});
   struct tb_event ev;
 
   tb_clear();
@@ -676,11 +676,11 @@ int main(int argc, char **argv) {
         return 0;
       }
       if (ev.key == key_code::ctrl_c && ctrlxpressed) {
-        static int chmap[] = {
-            TB_INPUT_ESC | TB_INPUT_MOUSE, /* 101 */
-            TB_INPUT_ALT | TB_INPUT_MOUSE, /* 110 */
-            TB_INPUT_ESC,                  /* 001 */
-            TB_INPUT_ALT,                  /* 010 */
+        static input_mode chmap[] = {
+            {.escaped = true, .mouse = true}, /* 101 */
+            {.alt = true, .mouse = true},     /* 110 */
+            {.escaped = true},                /* 001 */
+            {.alt = true},                    /* 010 */
         };
         inputmode++;
         if (inputmode >= 4) {
