@@ -1,21 +1,20 @@
+#include "termbox.h"
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
-#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/select.h>
 #include <sys/stat.h>
-#include <sys/time.h>
 #include <termios.h>
 #include <unistd.h>
 #include <wchar.h>
-#include "termbox.h"
 
 #include "term.inl"
+
 #include "bytebuffer.inl"
 #include "input.inl"
 
@@ -40,7 +39,7 @@ static int termw = -1;
 static int termh = -1;
 
 static int inputmode = TB_INPUT_ESC;
-static int outputmode = TB_OUTPUT_NORMAL;
+static output_mode outputmode = output_mode::normal;
 
 static int inout;
 static int winch_fds[2];
@@ -67,13 +66,13 @@ static void send_attr(uint16_t fg, uint16_t bg);
 static void send_char(int x, int y, uint32_t c);
 static void send_clear(void);
 static void sigwinch_handler(int xxx);
-static event_type wait_fill_event(struct tb_event *event, struct timeval *timeout);
+static event_type wait_fill_event(struct tb_event *event,
+                                  struct timeval *timeout);
 
 /* may happen in a different thread */
 static volatile int buffer_size_change_request;
 
-modifiers &operator|=(modifiers &lhs, modifiers rhs)
-{
+modifiers &operator|=(modifiers &lhs, modifiers rhs) {
   switch (lhs) {
   case modifiers::both:
     break;
@@ -298,7 +297,9 @@ struct tb_cell *tb_cell_buffer(void) {
   return back_buffer.cells;
 }
 
-event_type tb_poll_event(struct tb_event *event) { return wait_fill_event(event, 0); }
+event_type tb_poll_event(struct tb_event *event) {
+  return wait_fill_event(event, 0);
+}
 
 event_type tb_peek_event(struct tb_event *event, int timeout) {
   struct timeval tv;
@@ -341,8 +342,8 @@ int tb_select_input_mode(int mode) {
   return inputmode;
 }
 
-int tb_select_output_mode(int mode) {
-  if (mode)
+output_mode tb_select_output_mode(output_mode mode) {
+  if (mode != output_mode::current)
     outputmode = mode;
   return outputmode;
 }
@@ -389,9 +390,9 @@ static void write_sgr(uint16_t fg, uint16_t bg) {
     return;
 
   switch (outputmode) {
-  case TB_OUTPUT_256:
-  case TB_OUTPUT_216:
-  case TB_OUTPUT_GRAYSCALE:
+  case output_mode::mode256:
+  case output_mode::mode216:
+  case output_mode::grayscale:
     WRITE_LITERAL("\033[");
     if (fg != TB_DEFAULT) {
       WRITE_LITERAL("38;5;");
@@ -406,7 +407,7 @@ static void write_sgr(uint16_t fg, uint16_t bg) {
     }
     WRITE_LITERAL("m");
     break;
-  case TB_OUTPUT_NORMAL:
+  case output_mode::normal:
   default:
     WRITE_LITERAL("\033[");
     if (fg != TB_DEFAULT) {
@@ -502,12 +503,12 @@ static void send_attr(uint16_t fg, uint16_t bg) {
     uint16_t bgcol;
 
     switch (outputmode) {
-    case TB_OUTPUT_256:
+    case output_mode::mode256:
       fgcol = fg & 0xFF;
       bgcol = bg & 0xFF;
       break;
 
-    case TB_OUTPUT_216:
+    case output_mode::mode216:
       fgcol = fg & 0xFF;
       if (fgcol > 215)
         fgcol = 7;
@@ -518,7 +519,7 @@ static void send_attr(uint16_t fg, uint16_t bg) {
       bgcol += 0x10;
       break;
 
-    case TB_OUTPUT_GRAYSCALE:
+    case output_mode::grayscale:
       fgcol = fg & 0xFF;
       if (fgcol > 23)
         fgcol = 23;
@@ -529,7 +530,7 @@ static void send_attr(uint16_t fg, uint16_t bg) {
       bgcol += 0xe8;
       break;
 
-    case TB_OUTPUT_NORMAL:
+    case output_mode::normal:
     default:
       fgcol = fg & 0x0F;
       bgcol = bg & 0x0F;
@@ -627,7 +628,8 @@ static int read_up_to(int n) {
   return 0;
 }
 
-static event_type wait_fill_event(struct tb_event *event, struct timeval *timeout) {
+static event_type wait_fill_event(struct tb_event *event,
+                                  struct timeval *timeout) {
   // ;-)
 #define ENOUGH_DATA_FOR_PARSING 64
   fd_set events;

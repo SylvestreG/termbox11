@@ -267,11 +267,13 @@ struct tb_cell *tb_cell_buffer(void);
  */
 int tb_select_input_mode(int mode);
 
-#define TB_OUTPUT_CURRENT 0
-#define TB_OUTPUT_NORMAL 1
-#define TB_OUTPUT_256 2
-#define TB_OUTPUT_216 3
-#define TB_OUTPUT_GRAYSCALE 4
+enum class output_mode {
+  current,
+  normal,
+  mode256,
+  mode216,
+  grayscale
+};
 
 /* Sets the termbox output mode. Termbox has three output options:
  * 1. TB_OUTPUT_NORMAL     => [1..8]
@@ -308,7 +310,7 @@ int tb_select_input_mode(int mode);
  *
  * Default termbox output mode is TB_OUTPUT_NORMAL.
  */
-int tb_select_output_mode(int mode);
+output_mode tb_select_output_mode(output_mode mode);
 
 /* Wait for an event up to 'timeout' milliseconds and fill the 'event'
  * structure with it, when the event is available. Returns the type of the
