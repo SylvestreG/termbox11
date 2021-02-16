@@ -72,8 +72,8 @@ void colorAttrFunc(int i, uint32_t *r, uint16_t *fg, uint16_t *bg) {
   *bg = colors[i];
 }
 
-void updateAndRedrawAll(termbox11 const &tb, int mx, int my) {
-  tb_clear();
+void updateAndRedrawAll(termbox11 &tb, int mx, int my) {
+  tb.clear();
   if (mx != -1 && my != -1) {
     backbuf[bbw * my + mx].ch = runes[curRune];
     backbuf[bbw * my + mx].fg = colors[curCol];
@@ -82,7 +82,7 @@ void updateAndRedrawAll(termbox11 const &tb, int mx, int my) {
   int h = tb.height();
   updateAndDrawButtons(&curRune, 0, 0, mx, my, len(runes), runeAttrFunc);
   updateAndDrawButtons(&curCol, 0, h - 3, mx, my, len(colors), colorAttrFunc);
-  tb_present();
+  tb.present();
 }
 
 void reallocBackBuffer(int w, int h) {

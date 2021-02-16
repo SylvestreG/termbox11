@@ -35,9 +35,9 @@ static struct cellbuf front_buffer;
 static struct bytebuffer output_buffer;
 static struct bytebuffer input_buffer;
 
-static int termw = -1;
+/*static int termw = -1;
 static int termh = -1;
-
+*/
 static input_mode inputmode{true, false, false};
 static output_mode outputmode = output_mode::normal;
 
@@ -60,8 +60,6 @@ static void cellbuf_resize(struct cellbuf *buf, int width, int height);
 static void cellbuf_clear(struct cellbuf *buf);
 static void cellbuf_free(struct cellbuf *buf);
 
-static void update_size(void);
-static void update_term_size(void);
 static void send_attr(uint16_t fg, uint16_t bg);
 static void send_char(int x, int y, uint32_t c);
 static void send_clear(void);
@@ -101,56 +99,7 @@ modifiers &operator|=(modifiers &lhs, modifiers rhs) {
 
 /* -------------------------------------------------------- */
 
-void tb_shutdown(void) {
-}
-
-void tb_present(void) {
-  int x, y, w, i;
-  struct tb_cell *back, *front;
-
-  /* invalidate cursor position */
-  lastx = LAST_COORD_INIT;
-  lasty = LAST_COORD_INIT;
-
-  if (buffer_size_change_request) {
-    update_size();
-    buffer_size_change_request = 0;
-  }
-
-  for (y = 0; y < front_buffer.height; ++y) {
-    for (x = 0; x < front_buffer.width;) {
-      back = &CELL(&back_buffer, x, y);
-      front = &CELL(&front_buffer, x, y);
-      w = wcwidth(back->ch);
-      if (w < 1)
-        w = 1;
-      if (memcmp(back, front, sizeof(struct tb_cell)) == 0) {
-        x += w;
-        continue;
-      }
-      memcpy(front, back, sizeof(struct tb_cell));
-      send_attr(back->fg, back->bg);
-      if (w > 1 && x >= front_buffer.width - (w - 1)) {
-        // Not enough room for wide ch, so send spaces
-        for (i = x; i < front_buffer.width; ++i) {
-          send_char(i, y, ' ');
-        }
-      } else {
-        send_char(x, y, back->ch);
-        for (i = 1; i < w; ++i) {
-          front = &CELL(&front_buffer, x + i, y);
-          front->ch = 0;
-          front->fg = back->fg;
-          front->bg = back->bg;
-        }
-      }
-      x += w;
-    }
-  }
-  if (!IS_CURSOR_HIDDEN(cursor_x, cursor_y))
-    write_cursor(cursor_x, cursor_y);
-  bytebuffer_flush(&output_buffer, inout);
-}
+void tb_shutdown(void) {}
 
 void tb_set_cursor(int cx, int cy) {
   if (IS_CURSOR_HIDDEN(cursor_x, cursor_y) && !IS_CURSOR_HIDDEN(cx, cy))
@@ -226,16 +175,8 @@ event_type tb_peek_event(struct tb_event *event, int timeout) {
   return wait_fill_event(event, &tv);
 }
 
-int tb_width(void) { return termw; }
-
-int tb_height(void) { return termh; }
-
 void tb_clear(void) {
-  if (buffer_size_change_request) {
-    update_size();
-    buffer_size_change_request = 0;
-  }
-  cellbuf_clear(&back_buffer);
+
 }
 
 void tb_select_input_mode(input_mode mode) {
@@ -400,16 +341,6 @@ static void get_term_size(int *w, int *h) {
     *h = sz.ws_row;
 }
 
-static void update_term_size(void) {
-  struct winsize sz;
-  memset(&sz, 0, sizeof(sz));
-
-  ioctl(inout, TIOCGWINSZ, &sz);
-
-  termw = sz.ws_col;
-  termh = sz.ws_row;
-}
-
 static void send_attr(uint16_t fg, uint16_t bg) {
 #define LAST_ATTR_INIT 0xFFFF
   static uint16_t lastfg = LAST_ATTR_INIT, lastbg = LAST_ATTR_INIT;
@@ -503,14 +434,6 @@ static void sigwinch_handler(int xxx) {
   write(winch_fds[1], &zzz, sizeof(int));
 }
 
-static void update_size(void) {
-  update_term_size();
-  cellbuf_resize(&back_buffer, termw, termh);
-  cellbuf_resize(&front_buffer, termw, termh);
-  cellbuf_clear(&front_buffer);
-  send_clear();
-}
-
 static int read_up_to(int n) {
   assert(n > 0);
   const int prevlen = input_buffer.len;
@@ -598,12 +521,41 @@ static event_type wait_fill_event(struct tb_event *event,
   }
 }
 
+struct termbox_impl {
+public:
+  void update_term_size();
+  void update_size();
+
+private:
+  size_t _w;
+  size_t _h;
+  friend termbox11;
+};
+
+void termbox_impl::update_term_size() {
+  struct winsize sz;
+  memset(&sz, 0, sizeof(sz));
+
+  ioctl(inout, TIOCGWINSZ, &sz);
+
+  _w = sz.ws_col;
+  _h = sz.ws_row;
+}
+
+void termbox_impl::update_size() {
+    update_term_size();
+    cellbuf_resize(&back_buffer, _w, _h);
+    cellbuf_resize(&front_buffer, _w, _h);
+    cellbuf_clear(&front_buffer);
+    send_clear();
+}
+
 termbox11::termbox11() : termbox11("/dev/tty") {}
 
 termbox11::termbox11(std::string name)
     : termbox11(open(name.c_str(), O_RDWR)) {}
 
-termbox11::termbox11(int fd) {
+termbox11::termbox11(int fd) : _impl(std::make_unique<termbox_impl>()) {
   inout = fd;
   if (inout == -1) {
     throw std::runtime_error("failed to open tty");
@@ -648,19 +600,14 @@ termbox11::termbox11(int fd) {
   bytebuffer_puts(&output_buffer, funcs[T_HIDE_CURSOR]);
   send_clear();
 
-  update_term_size();
-  cellbuf_init(&back_buffer, termw, termh);
-  cellbuf_init(&front_buffer, termw, termh);
+  _impl->update_term_size();
+  cellbuf_init(&back_buffer, _impl->_w, _impl->_h);
+  cellbuf_init(&front_buffer, _impl->_w, _impl->_h);
   cellbuf_clear(&back_buffer);
   cellbuf_clear(&front_buffer);
 }
 
 termbox11::~termbox11() {
-  if (termw == -1) {
-    fputs("tb_shutdown() should not be called twice.", stderr);
-    abort();
-  }
-
   bytebuffer_puts(&output_buffer, funcs[T_SHOW_CURSOR]);
   bytebuffer_puts(&output_buffer, funcs[T_SGR0]);
   bytebuffer_puts(&output_buffer, funcs[T_CLEAR_SCREEN]);
@@ -679,8 +626,64 @@ termbox11::~termbox11() {
   cellbuf_free(&front_buffer);
   bytebuffer_free(&output_buffer);
   bytebuffer_free(&input_buffer);
-  termw = termh = -1;
+  _impl->_w = _impl->_h = SIZE_MAX;
 }
 
-size_t termbox11::width() const { return termw; }
-size_t termbox11::height() const { return termh; }
+size_t termbox11::width() const { return _impl->_w; }
+size_t termbox11::height() const { return _impl->_h; }
+
+void termbox11::clear() {
+  if (buffer_size_change_request) {
+    _impl->update_size();
+    buffer_size_change_request = 0;
+  }
+  cellbuf_clear(&back_buffer);
+}
+
+void termbox11::present() {
+  int x, y, w, i;
+  struct tb_cell *back, *front;
+
+  /* invalidate cursor position */
+  lastx = LAST_COORD_INIT;
+  lasty = LAST_COORD_INIT;
+
+  if (buffer_size_change_request) {
+    _impl->update_size();
+    buffer_size_change_request = 0;
+  }
+
+  for (y = 0; y < front_buffer.height; ++y) {
+    for (x = 0; x < front_buffer.width;) {
+      back = &CELL(&back_buffer, x, y);
+      front = &CELL(&front_buffer, x, y);
+      w = wcwidth(back->ch);
+      if (w < 1)
+        w = 1;
+      if (memcmp(back, front, sizeof(struct tb_cell)) == 0) {
+        x += w;
+        continue;
+      }
+      memcpy(front, back, sizeof(struct tb_cell));
+      send_attr(back->fg, back->bg);
+      if (w > 1 && x >= front_buffer.width - (w - 1)) {
+        // Not enough room for wide ch, so send spaces
+        for (i = x; i < front_buffer.width; ++i) {
+          send_char(i, y, ' ');
+        }
+      } else {
+        send_char(x, y, back->ch);
+        for (i = 1; i < w; ++i) {
+          front = &CELL(&front_buffer, x + i, y);
+          front->ch = 0;
+          front->fg = back->fg;
+          front->bg = back->bg;
+        }
+      }
+      x += w;
+    }
+  }
+  if (!IS_CURSOR_HIDDEN(cursor_x, cursor_y))
+    write_cursor(cursor_x, cursor_y);
+  bytebuffer_flush(&output_buffer, inout);
+}

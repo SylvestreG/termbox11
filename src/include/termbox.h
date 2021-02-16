@@ -190,6 +190,8 @@ struct tb_event {
  * After successful initialization, the library must be
  * finalized using the tb_shutdown() function.
  */
+struct termbox_impl;
+
 class termbox11 {
 public:
   termbox11();
@@ -197,22 +199,21 @@ public:
   termbox11(int fd);
   ~termbox11();
 
+  void clear();
+  void present();
+
   size_t width() const;
   size_t height() const;
 private:
+  std::unique_ptr<termbox_impl> _impl;
 };
 
 
 /* Clears the internal back buffer using TB_DEFAULT color or the
  * color/attributes set by tb_set_clear_attributes() function.
  */
-void tb_clear(void);
 void tb_set_clear_attributes(uint16_t fg, uint16_t bg);
 
-/* Synchronizes the internal back buffer with the terminal. */
-void tb_present(void);
-
-#define TB_HIDE_CURSOR -1
 
 /* Sets the position of the cursor. Upper-left character is (0, 0). If you pass
  * TB_HIDE_CURSOR as both coordinates, then the cursor will be hidden. Cursor

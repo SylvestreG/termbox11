@@ -658,9 +658,9 @@ int main(int argc, char **argv) {
     tb_select_input_mode({.escaped = true, .mouse = true});
     struct tb_event ev;
 
-    tb_clear();
+    tb.clear();
     draw_keyboard();
-    tb_present();
+    tb.present();
     int inputmode = 0;
     int ctrlxpressed = 0;
 
@@ -688,23 +688,23 @@ int main(int argc, char **argv) {
         else
           ctrlxpressed = 0;
 
-        tb_clear();
+        tb.clear();
         draw_keyboard();
         dispatch_press(&ev);
         pretty_print_press(&ev);
-        tb_present();
+        tb.present();
         break;
       case event_type::resize:
-        tb_clear();
+        tb.clear();
         draw_keyboard();
         pretty_print_resize(&ev);
-        tb_present();
+        tb.present();
         break;
       case event_type::mouse:
-        tb_clear();
+        tb.clear();
         draw_keyboard();
         pretty_print_mouse(&ev);
-        tb_present();
+        tb.present();
         break;
       default:
         break;
