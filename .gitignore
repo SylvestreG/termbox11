@@ -34,3 +34,4 @@
 #dirs
 build/*
 cmake-build-*
+.idea/*
