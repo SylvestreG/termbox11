@@ -664,7 +664,7 @@ int main(int argc, char **argv) {
     int inputmode = 0;
     int ctrlxpressed = 0;
 
-    while (tb_poll_event(&ev) != event_type::none) {
+    while (tb.poll_event(&ev) != event_type::none) {
       switch (ev.type) {
       case event_type::key:
         if (ev.key == key_code::ctrl_q && ctrlxpressed) {

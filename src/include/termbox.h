@@ -199,6 +199,9 @@ public:
   termbox11(int fd);
   ~termbox11();
 
+  event_type poll_event(struct tb_event *event);
+  event_type peek_event(struct tb_event *event, int timeout);
+
   void clear();
   void present();
 
@@ -320,13 +323,11 @@ output_mode tb_select_output_mode(output_mode mode);
  * event (one of TB_EVENT_* constants) or -1 if there was an error or 0 in case
  * there were no event during 'timeout' period.
  */
-event_type tb_peek_event(struct tb_event *event, int timeout);
 
 /* Wait for an event forever and fill the 'event' structure with it, when the
  * event is available. Returns the type of the event (one of TB_EVENT_*
  * constants) or -1 if there was an error.
  */
-event_type tb_poll_event(struct tb_event *event);
 
 /* Utility utf8 functions. */
 #define TB_EOF -1

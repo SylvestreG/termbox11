@@ -96,7 +96,7 @@ int main(int argc, char **argv) {
     draw_all(tb);
 
     struct tb_event ev;
-    while (tb_poll_event(&ev) != event_type::none) {
+    while (tb.poll_event(&ev) != event_type::none) {
       switch (ev.type) {
       case event_type::key:
         switch (ev.key) {

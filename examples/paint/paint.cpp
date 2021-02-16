@@ -110,7 +110,7 @@ int main(int argv, char **argc) {
     struct tb_event ev;
     int mx = -1;
     int my = -1;
-    event_type t = tb_poll_event(&ev);
+    event_type t = tb.poll_event(&ev);
     if (t == event_type::error) {
       fprintf(stderr, "termbox poll event error\n");
       return -1;

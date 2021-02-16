@@ -64,12 +64,8 @@ static void send_attr(uint16_t fg, uint16_t bg);
 static void send_char(int x, int y, uint32_t c);
 static void send_clear(void);
 static void sigwinch_handler(int xxx);
-static event_type wait_fill_event(struct tb_event *event,
-                                  struct timeval *timeout);
 
 /* may happen in a different thread */
-static volatile int buffer_size_change_request;
-
 modifiers &operator|=(modifiers &lhs, modifiers rhs) {
   switch (lhs) {
   case modifiers::both:
@@ -162,21 +158,6 @@ void tb_blit(int x, int y, int w, int h, const struct tb_cell *cells) {
 
 struct tb_cell *tb_cell_buffer(void) {
   return back_buffer.cells;
-}
-
-event_type tb_poll_event(struct tb_event *event) {
-  return wait_fill_event(event, 0);
-}
-
-event_type tb_peek_event(struct tb_event *event, int timeout) {
-  struct timeval tv;
-  tv.tv_sec = timeout / 1000;
-  tv.tv_usec = (timeout - (tv.tv_sec * 1000)) * 1000;
-  return wait_fill_event(event, &tv);
-}
-
-void tb_clear(void) {
-
 }
 
 void tb_select_input_mode(input_mode mode) {
@@ -468,9 +449,39 @@ static int read_up_to(int n) {
   return 0;
 }
 
-static event_type wait_fill_event(struct tb_event *event,
-                                  struct timeval *timeout) {
-  // ;-)
+struct termbox_impl {
+public:
+  void update_term_size();
+  void update_size();
+  event_type wait_fill_event(struct tb_event *event, struct timeval *timeout);
+
+private:
+  size_t _w;
+  size_t _h;
+  bool _buffer_size_change_request;
+
+  friend termbox11;
+};
+
+void termbox_impl::update_term_size() {
+  struct winsize sz;
+  memset(&sz, 0, sizeof(sz));
+
+  ioctl(inout, TIOCGWINSZ, &sz);
+
+  _w = sz.ws_col;
+  _h = sz.ws_row;
+}
+
+void termbox_impl::update_size() {
+    update_term_size();
+    cellbuf_resize(&back_buffer, _w, _h);
+    cellbuf_resize(&front_buffer, _w, _h);
+    cellbuf_clear(&front_buffer);
+    send_clear();
+}
+event_type termbox_impl::wait_fill_event(struct tb_event *event,
+                                         struct timeval *timeout) {
 #define ENOUGH_DATA_FOR_PARSING 64
   fd_set events;
   memset(event, 0, sizeof(struct tb_event));
@@ -514,40 +525,11 @@ static event_type wait_fill_event(struct tb_event *event,
       event->type = event_type::resize;
       int zzz = 0;
       read(winch_fds[0], &zzz, sizeof(int));
-      buffer_size_change_request = 1;
+      _buffer_size_change_request = true;
       get_term_size(&event->w, &event->h);
       return event_type::resize;
     }
   }
-}
-
-struct termbox_impl {
-public:
-  void update_term_size();
-  void update_size();
-
-private:
-  size_t _w;
-  size_t _h;
-  friend termbox11;
-};
-
-void termbox_impl::update_term_size() {
-  struct winsize sz;
-  memset(&sz, 0, sizeof(sz));
-
-  ioctl(inout, TIOCGWINSZ, &sz);
-
-  _w = sz.ws_col;
-  _h = sz.ws_row;
-}
-
-void termbox_impl::update_size() {
-    update_term_size();
-    cellbuf_resize(&back_buffer, _w, _h);
-    cellbuf_resize(&front_buffer, _w, _h);
-    cellbuf_clear(&front_buffer);
-    send_clear();
 }
 
 termbox11::termbox11() : termbox11("/dev/tty") {}
@@ -633,9 +615,9 @@ size_t termbox11::width() const { return _impl->_w; }
 size_t termbox11::height() const { return _impl->_h; }
 
 void termbox11::clear() {
-  if (buffer_size_change_request) {
+  if (_impl->_buffer_size_change_request) {
     _impl->update_size();
-    buffer_size_change_request = 0;
+    _impl->_buffer_size_change_request = 0;
   }
   cellbuf_clear(&back_buffer);
 }
@@ -648,9 +630,9 @@ void termbox11::present() {
   lastx = LAST_COORD_INIT;
   lasty = LAST_COORD_INIT;
 
-  if (buffer_size_change_request) {
+  if (_impl->_buffer_size_change_request) {
     _impl->update_size();
-    buffer_size_change_request = 0;
+    _impl->_buffer_size_change_request = false;
   }
 
   for (y = 0; y < front_buffer.height; ++y) {
@@ -686,4 +668,14 @@ void termbox11::present() {
   if (!IS_CURSOR_HIDDEN(cursor_x, cursor_y))
     write_cursor(cursor_x, cursor_y);
   bytebuffer_flush(&output_buffer, inout);
+}
+event_type termbox11::poll_event(struct tb_event *event) {
+  return _impl->wait_fill_event(event, 0);
+}
+
+event_type termbox11::peek_event(struct tb_event *event, int timeout) {
+  struct timeval tv;
+  tv.tv_sec = timeout / 1000;
+  tv.tv_usec = (timeout - (tv.tv_sec * 1000)) * 1000;
+  return _impl->wait_fill_event(event, &tv);
 }
