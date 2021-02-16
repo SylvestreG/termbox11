@@ -32,14 +32,7 @@ static struct termios orig_tios;
 
 static struct cellbuf back_buffer;
 static struct cellbuf front_buffer;
-static struct bytebuffer output_buffer;
-static struct bytebuffer input_buffer;
 
-/*static int termw = -1;
-static int termh = -1;
-*/
-static input_mode inputmode{true, false, false};
-static output_mode outputmode = output_mode::normal;
 
 static int inout;
 static int winch_fds[2];
@@ -52,17 +45,11 @@ static int cursor_y = -1;
 static uint16_t background = TB_DEFAULT;
 static uint16_t foreground = TB_DEFAULT;
 
-static void write_cursor(int x, int y);
-static void write_sgr(uint16_t fg, uint16_t bg);
-
 static void cellbuf_init(struct cellbuf *buf, int width, int height);
 static void cellbuf_resize(struct cellbuf *buf, int width, int height);
 static void cellbuf_clear(struct cellbuf *buf);
 static void cellbuf_free(struct cellbuf *buf);
 
-static void send_attr(uint16_t fg, uint16_t bg);
-static void send_char(int x, int y, uint32_t c);
-static void send_clear(void);
 static void sigwinch_handler(int xxx);
 
 /* may happen in a different thread */
@@ -94,21 +81,6 @@ modifiers &operator|=(modifiers &lhs, modifiers rhs) {
 }
 
 /* -------------------------------------------------------- */
-
-void tb_shutdown(void) {}
-
-void tb_set_cursor(int cx, int cy) {
-  if (IS_CURSOR_HIDDEN(cursor_x, cursor_y) && !IS_CURSOR_HIDDEN(cx, cy))
-    bytebuffer_puts(&output_buffer, funcs[T_SHOW_CURSOR]);
-
-  if (!IS_CURSOR_HIDDEN(cursor_x, cursor_y) && IS_CURSOR_HIDDEN(cx, cy))
-    bytebuffer_puts(&output_buffer, funcs[T_HIDE_CURSOR]);
-
-  cursor_x = cx;
-  cursor_y = cy;
-  if (!IS_CURSOR_HIDDEN(cursor_x, cursor_y))
-    write_cursor(cursor_x, cursor_y);
-}
 
 void tb_put_cell(int x, int y, const struct tb_cell *cell) {
   if ((unsigned)x >= (unsigned)back_buffer.width)
@@ -160,33 +132,6 @@ struct tb_cell *tb_cell_buffer(void) {
   return back_buffer.cells;
 }
 
-void tb_select_input_mode(input_mode mode) {
-  if (!mode.escaped && !mode.alt)
-    mode.escaped = true;
-
-  /* technically termbox can handle that, but let's be nice and show here
-     what mode is actually used */
-  if (mode.escaped && mode.alt)
-    mode.alt = false;
-
-  inputmode = mode;
-  if (mode.mouse) {
-    bytebuffer_puts(&output_buffer, funcs[T_ENTER_MOUSE]);
-    bytebuffer_flush(&output_buffer, inout);
-  } else {
-    bytebuffer_puts(&output_buffer, funcs[T_EXIT_MOUSE]);
-    bytebuffer_flush(&output_buffer, inout);
-  }
-}
-
-input_mode tb_get_input_mode() { return inputmode; }
-
-output_mode tb_select_output_mode(output_mode mode) {
-  if (mode != output_mode::current)
-    outputmode = mode;
-  return outputmode;
-}
-
 void tb_set_clear_attributes(uint16_t fg, uint16_t bg) {
   foreground = fg;
   background = bg;
@@ -209,61 +154,9 @@ static int convertnum(uint32_t num, char *buf) {
   return l;
 }
 
-#define WRITE_LITERAL(X) bytebuffer_append(&output_buffer, (X), sizeof(X) - 1)
+#define WRITE_LITERAL(X) bytebuffer_append(&_output_buffer, (X), sizeof(X) - 1)
 #define WRITE_INT(X)                                                           \
-  bytebuffer_append(&output_buffer, buf, convertnum((X), buf))
-
-static void write_cursor(int x, int y) {
-  char buf[32];
-  WRITE_LITERAL("\033[");
-  WRITE_INT(y + 1);
-  WRITE_LITERAL(";");
-  WRITE_INT(x + 1);
-  WRITE_LITERAL("H");
-}
-
-static void write_sgr(uint16_t fg, uint16_t bg) {
-  char buf[32];
-
-  if (fg == TB_DEFAULT && bg == TB_DEFAULT)
-    return;
-
-  switch (outputmode) {
-  case output_mode::mode256:
-  case output_mode::mode216:
-  case output_mode::grayscale:
-    WRITE_LITERAL("\033[");
-    if (fg != TB_DEFAULT) {
-      WRITE_LITERAL("38;5;");
-      WRITE_INT(fg);
-      if (bg != TB_DEFAULT) {
-        WRITE_LITERAL(";");
-      }
-    }
-    if (bg != TB_DEFAULT) {
-      WRITE_LITERAL("48;5;");
-      WRITE_INT(bg);
-    }
-    WRITE_LITERAL("m");
-    break;
-  case output_mode::normal:
-  default:
-    WRITE_LITERAL("\033[");
-    if (fg != TB_DEFAULT) {
-      WRITE_LITERAL("3");
-      WRITE_INT(fg - 1);
-      if (bg != TB_DEFAULT) {
-        WRITE_LITERAL(";");
-      }
-    }
-    if (bg != TB_DEFAULT) {
-      WRITE_LITERAL("4");
-      WRITE_INT(bg - 1);
-    }
-    WRITE_LITERAL("m");
-    break;
-  }
-}
+  bytebuffer_append(&_output_buffer, buf, convertnum((X), buf))
 
 static void cellbuf_init(struct cellbuf *buf, int width, int height) {
   buf->cells =
@@ -322,16 +215,166 @@ static void get_term_size(int *w, int *h) {
     *h = sz.ws_row;
 }
 
-static void send_attr(uint16_t fg, uint16_t bg) {
+static void sigwinch_handler(int xxx) {
+  (void)xxx;
+  const int zzz = 1;
+  write(winch_fds[1], &zzz, sizeof(int));
+}
+
+struct termbox_impl {
+public:
+  void update_term_size();
+  void update_size();
+  event_type wait_fill_event(struct tb_event *event, struct timeval *timeout);
+  void write_cursor(int x, int y);
+  void write_sgr(uint16_t fg, uint16_t bg);
+  void send_attr(uint16_t fg, uint16_t bg);
+  void send_char(int x, int y, uint32_t c);
+  void send_clear(void);
+  int read_up_to(int n);
+
+private:
+  size_t _w;
+  size_t _h;
+  bool _buffer_size_change_request;
+  struct bytebuffer _output_buffer;
+  struct bytebuffer _input_buffer;
+  input_mode _inputmode{true, false, false};
+  output_mode _outputmode{output_mode::normal};
+
+  friend termbox11;
+};
+
+void termbox_impl::update_term_size() {
+  struct winsize sz;
+  memset(&sz, 0, sizeof(sz));
+
+  ioctl(inout, TIOCGWINSZ, &sz);
+
+  _w = sz.ws_col;
+  _h = sz.ws_row;
+}
+
+void termbox_impl::update_size() {
+    update_term_size();
+    cellbuf_resize(&back_buffer, _w, _h);
+    cellbuf_resize(&front_buffer, _w, _h);
+    cellbuf_clear(&front_buffer);
+    send_clear();
+}
+event_type termbox_impl::wait_fill_event(struct tb_event *event,
+                                         struct timeval *timeout) {
+#define ENOUGH_DATA_FOR_PARSING 64
+  fd_set events;
+  memset(event, 0, sizeof(struct tb_event));
+
+  // try to extract event from input buffer, return on success
+  event->type = event_type::key;
+  if (extract_event(event, &_input_buffer, _inputmode))
+    return event->type;
+
+  // it looks like input buffer is incomplete, let's try the short path,
+  // but first make sure there is enough space
+  int n = read_up_to(ENOUGH_DATA_FOR_PARSING);
+  if (n < 0)
+    return event_type::error;
+  if (n > 0 && extract_event(event, &_input_buffer, _inputmode))
+    return event->type;
+
+  // n == 0, or not enough data, let's go to select
+  while (1) {
+    FD_ZERO(&events);
+    FD_SET(inout, &events);
+    FD_SET(winch_fds[0], &events);
+    int maxfd = (winch_fds[0] > inout) ? winch_fds[0] : inout;
+    int result = select(maxfd + 1, &events, 0, 0, timeout);
+    if (!result)
+      return event_type::none;
+
+    if (FD_ISSET(inout, &events)) {
+      event->type = event_type::key;
+      n = read_up_to(ENOUGH_DATA_FOR_PARSING);
+      if (n < 0)
+        return event_type::error;
+
+      if (n == 0)
+        continue;
+
+      if (extract_event(event, &_input_buffer, _inputmode))
+        return event->type;
+    }
+    if (FD_ISSET(winch_fds[0], &events)) {
+      event->type = event_type::resize;
+      int zzz = 0;
+      read(winch_fds[0], &zzz, sizeof(int));
+      _buffer_size_change_request = true;
+      get_term_size(&event->w, &event->h);
+      return event_type::resize;
+    }
+  }
+}
+
+void termbox_impl::write_cursor(int x, int y) {
+  char buf[32];
+  WRITE_LITERAL("\033[");
+  WRITE_INT(y + 1);
+  WRITE_LITERAL(";");
+  WRITE_INT(x + 1);
+  WRITE_LITERAL("H");
+}
+
+void termbox_impl::write_sgr(uint16_t fg, uint16_t bg) {
+  char buf[32];
+
+  if (fg == TB_DEFAULT && bg == TB_DEFAULT)
+    return;
+
+  switch (_outputmode) {
+  case output_mode::mode256:
+  case output_mode::mode216:
+  case output_mode::grayscale:
+    WRITE_LITERAL("\033[");
+    if (fg != TB_DEFAULT) {
+      WRITE_LITERAL("38;5;");
+      WRITE_INT(fg);
+      if (bg != TB_DEFAULT) {
+        WRITE_LITERAL(";");
+      }
+    }
+    if (bg != TB_DEFAULT) {
+      WRITE_LITERAL("48;5;");
+      WRITE_INT(bg);
+    }
+    WRITE_LITERAL("m");
+    break;
+  case output_mode::normal:
+  default:
+    WRITE_LITERAL("\033[");
+    if (fg != TB_DEFAULT) {
+      WRITE_LITERAL("3");
+      WRITE_INT(fg - 1);
+      if (bg != TB_DEFAULT) {
+        WRITE_LITERAL(";");
+      }
+    }
+    if (bg != TB_DEFAULT) {
+      WRITE_LITERAL("4");
+      WRITE_INT(bg - 1);
+    }
+    WRITE_LITERAL("m");
+    break;
+  }
+}
+void termbox_impl::send_attr(uint16_t fg, uint16_t bg) {
 #define LAST_ATTR_INIT 0xFFFF
   static uint16_t lastfg = LAST_ATTR_INIT, lastbg = LAST_ATTR_INIT;
   if (fg != lastfg || bg != lastbg) {
-    bytebuffer_puts(&output_buffer, funcs[T_SGR0]);
+    bytebuffer_puts(&_output_buffer, funcs[T_SGR0]);
 
     uint16_t fgcol;
     uint16_t bgcol;
 
-    switch (outputmode) {
+    switch (_outputmode) {
     case output_mode::mode256:
       fgcol = fg & 0xFF;
       bgcol = bg & 0xFF;
@@ -366,13 +409,13 @@ static void send_attr(uint16_t fg, uint16_t bg) {
     }
 
     if (fg & TB_BOLD)
-      bytebuffer_puts(&output_buffer, funcs[T_BOLD]);
+      bytebuffer_puts(&_output_buffer, funcs[T_BOLD]);
     if (bg & TB_BOLD)
-      bytebuffer_puts(&output_buffer, funcs[T_BLINK]);
+      bytebuffer_puts(&_output_buffer, funcs[T_BLINK]);
     if (fg & TB_UNDERLINE)
-      bytebuffer_puts(&output_buffer, funcs[T_UNDERLINE]);
+      bytebuffer_puts(&_output_buffer, funcs[T_UNDERLINE]);
     if ((fg & TB_REVERSE) || (bg & TB_REVERSE))
-      bytebuffer_puts(&output_buffer, funcs[T_REVERSE]);
+      bytebuffer_puts(&_output_buffer, funcs[T_REVERSE]);
 
     write_sgr(fgcol, bgcol);
 
@@ -381,7 +424,7 @@ static void send_attr(uint16_t fg, uint16_t bg) {
   }
 }
 
-static void send_char(int x, int y, uint32_t c) {
+void termbox_impl::send_char(int x, int y, uint32_t c) {
   char buf[7];
   int bw = tb_utf8_unicode_to_char(buf, c);
   if (x - 1 != lastx || y != lasty)
@@ -390,15 +433,15 @@ static void send_char(int x, int y, uint32_t c) {
   lasty = y;
   if (!c)
     buf[0] = ' '; // replace 0 with whitespace
-  bytebuffer_append(&output_buffer, buf, bw);
+  bytebuffer_append(&_output_buffer, buf, bw);
 }
 
-static void send_clear(void) {
+void termbox_impl::send_clear(void) {
   send_attr(foreground, background);
-  bytebuffer_puts(&output_buffer, funcs[T_CLEAR_SCREEN]);
+  bytebuffer_puts(&_output_buffer, funcs[T_CLEAR_SCREEN]);
   if (!IS_CURSOR_HIDDEN(cursor_x, cursor_y))
     write_cursor(cursor_x, cursor_y);
-  bytebuffer_flush(&output_buffer, inout);
+  bytebuffer_flush(&_output_buffer, inout);
 
   /* we need to invalidate cursor position too and these two vars are
    * used only for simple cursor positioning optimization, cursor
@@ -409,22 +452,16 @@ static void send_clear(void) {
   lasty = LAST_COORD_INIT;
 }
 
-static void sigwinch_handler(int xxx) {
-  (void)xxx;
-  const int zzz = 1;
-  write(winch_fds[1], &zzz, sizeof(int));
-}
-
-static int read_up_to(int n) {
+int termbox_impl::read_up_to(int n) {
   assert(n > 0);
-  const int prevlen = input_buffer.len;
-  bytebuffer_resize(&input_buffer, prevlen + n);
+  const int prevlen = _input_buffer.len;
+  bytebuffer_resize(&_input_buffer, prevlen + n);
 
   int read_n = 0;
   while (read_n <= n) {
     ssize_t r = 0;
     if (read_n < n) {
-      r = read(inout, input_buffer.buf + prevlen + read_n, n - read_n);
+      r = read(inout, _input_buffer.buf + prevlen + read_n, n - read_n);
     }
 #ifdef __CYGWIN__
     // While linux man for tty says when VMIN == 0 && VTIME == 0, read
@@ -441,95 +478,12 @@ static int read_up_to(int n) {
     } else if (r > 0) {
       read_n += r;
     } else {
-      bytebuffer_resize(&input_buffer, prevlen + read_n);
+      bytebuffer_resize(&_input_buffer, prevlen + read_n);
       return read_n;
     }
   }
   assert(!"unreachable");
   return 0;
-}
-
-struct termbox_impl {
-public:
-  void update_term_size();
-  void update_size();
-  event_type wait_fill_event(struct tb_event *event, struct timeval *timeout);
-
-private:
-  size_t _w;
-  size_t _h;
-  bool _buffer_size_change_request;
-
-  friend termbox11;
-};
-
-void termbox_impl::update_term_size() {
-  struct winsize sz;
-  memset(&sz, 0, sizeof(sz));
-
-  ioctl(inout, TIOCGWINSZ, &sz);
-
-  _w = sz.ws_col;
-  _h = sz.ws_row;
-}
-
-void termbox_impl::update_size() {
-    update_term_size();
-    cellbuf_resize(&back_buffer, _w, _h);
-    cellbuf_resize(&front_buffer, _w, _h);
-    cellbuf_clear(&front_buffer);
-    send_clear();
-}
-event_type termbox_impl::wait_fill_event(struct tb_event *event,
-                                         struct timeval *timeout) {
-#define ENOUGH_DATA_FOR_PARSING 64
-  fd_set events;
-  memset(event, 0, sizeof(struct tb_event));
-
-  // try to extract event from input buffer, return on success
-  event->type = event_type::key;
-  if (extract_event(event, &input_buffer, inputmode))
-    return event->type;
-
-  // it looks like input buffer is incomplete, let's try the short path,
-  // but first make sure there is enough space
-  int n = read_up_to(ENOUGH_DATA_FOR_PARSING);
-  if (n < 0)
-    return event_type::error;
-  if (n > 0 && extract_event(event, &input_buffer, inputmode))
-    return event->type;
-
-  // n == 0, or not enough data, let's go to select
-  while (1) {
-    FD_ZERO(&events);
-    FD_SET(inout, &events);
-    FD_SET(winch_fds[0], &events);
-    int maxfd = (winch_fds[0] > inout) ? winch_fds[0] : inout;
-    int result = select(maxfd + 1, &events, 0, 0, timeout);
-    if (!result)
-      return event_type::none;
-
-    if (FD_ISSET(inout, &events)) {
-      event->type = event_type::key;
-      n = read_up_to(ENOUGH_DATA_FOR_PARSING);
-      if (n < 0)
-        return event_type::error;
-
-      if (n == 0)
-        continue;
-
-      if (extract_event(event, &input_buffer, inputmode))
-        return event->type;
-    }
-    if (FD_ISSET(winch_fds[0], &events)) {
-      event->type = event_type::resize;
-      int zzz = 0;
-      read(winch_fds[0], &zzz, sizeof(int));
-      _buffer_size_change_request = true;
-      get_term_size(&event->w, &event->h);
-      return event_type::resize;
-    }
-  }
 }
 
 termbox11::termbox11() : termbox11("/dev/tty") {}
@@ -574,13 +528,13 @@ termbox11::termbox11(int fd) : _impl(std::make_unique<termbox_impl>()) {
   tios.c_cc[VTIME] = 0;
   tcsetattr(inout, TCSAFLUSH, &tios);
 
-  bytebuffer_init(&input_buffer, 128);
-  bytebuffer_init(&output_buffer, 32 * 1024);
+  bytebuffer_init(&_impl->_input_buffer, 128);
+  bytebuffer_init(&_impl->_output_buffer, 32 * 1024);
 
-  bytebuffer_puts(&output_buffer, funcs[T_ENTER_CA]);
-  bytebuffer_puts(&output_buffer, funcs[T_ENTER_KEYPAD]);
-  bytebuffer_puts(&output_buffer, funcs[T_HIDE_CURSOR]);
-  send_clear();
+  bytebuffer_puts(&_impl->_output_buffer, funcs[T_ENTER_CA]);
+  bytebuffer_puts(&_impl->_output_buffer, funcs[T_ENTER_KEYPAD]);
+  bytebuffer_puts(&_impl->_output_buffer, funcs[T_HIDE_CURSOR]);
+  _impl->send_clear();
 
   _impl->update_term_size();
   cellbuf_init(&back_buffer, _impl->_w, _impl->_h);
@@ -590,13 +544,13 @@ termbox11::termbox11(int fd) : _impl(std::make_unique<termbox_impl>()) {
 }
 
 termbox11::~termbox11() {
-  bytebuffer_puts(&output_buffer, funcs[T_SHOW_CURSOR]);
-  bytebuffer_puts(&output_buffer, funcs[T_SGR0]);
-  bytebuffer_puts(&output_buffer, funcs[T_CLEAR_SCREEN]);
-  bytebuffer_puts(&output_buffer, funcs[T_EXIT_CA]);
-  bytebuffer_puts(&output_buffer, funcs[T_EXIT_KEYPAD]);
-  bytebuffer_puts(&output_buffer, funcs[T_EXIT_MOUSE]);
-  bytebuffer_flush(&output_buffer, inout);
+  bytebuffer_puts(&_impl->_output_buffer, funcs[T_SHOW_CURSOR]);
+  bytebuffer_puts(&_impl->_output_buffer, funcs[T_SGR0]);
+  bytebuffer_puts(&_impl->_output_buffer, funcs[T_CLEAR_SCREEN]);
+  bytebuffer_puts(&_impl->_output_buffer, funcs[T_EXIT_CA]);
+  bytebuffer_puts(&_impl->_output_buffer, funcs[T_EXIT_KEYPAD]);
+  bytebuffer_puts(&_impl->_output_buffer, funcs[T_EXIT_MOUSE]);
+  bytebuffer_flush(&_impl->_output_buffer, inout);
   tcsetattr(inout, TCSAFLUSH, &orig_tios);
 
   shutdown_term();
@@ -606,8 +560,8 @@ termbox11::~termbox11() {
 
   cellbuf_free(&back_buffer);
   cellbuf_free(&front_buffer);
-  bytebuffer_free(&output_buffer);
-  bytebuffer_free(&input_buffer);
+  bytebuffer_free(&_impl->_output_buffer);
+  bytebuffer_free(&_impl->_input_buffer);
   _impl->_w = _impl->_h = SIZE_MAX;
 }
 
@@ -647,14 +601,14 @@ void termbox11::present() {
         continue;
       }
       memcpy(front, back, sizeof(struct tb_cell));
-      send_attr(back->fg, back->bg);
+      _impl->send_attr(back->fg, back->bg);
       if (w > 1 && x >= front_buffer.width - (w - 1)) {
         // Not enough room for wide ch, so send spaces
         for (i = x; i < front_buffer.width; ++i) {
-          send_char(i, y, ' ');
+          _impl->send_char(i, y, ' ');
         }
       } else {
-        send_char(x, y, back->ch);
+        _impl->send_char(x, y, back->ch);
         for (i = 1; i < w; ++i) {
           front = &CELL(&front_buffer, x + i, y);
           front->ch = 0;
@@ -666,8 +620,8 @@ void termbox11::present() {
     }
   }
   if (!IS_CURSOR_HIDDEN(cursor_x, cursor_y))
-    write_cursor(cursor_x, cursor_y);
-  bytebuffer_flush(&output_buffer, inout);
+    _impl->write_cursor(cursor_x, cursor_y);
+  bytebuffer_flush(&_impl->_output_buffer, inout);
 }
 event_type termbox11::poll_event(struct tb_event *event) {
   return _impl->wait_fill_event(event, 0);
@@ -679,3 +633,42 @@ event_type termbox11::peek_event(struct tb_event *event, int timeout) {
   tv.tv_usec = (timeout - (tv.tv_sec * 1000)) * 1000;
   return _impl->wait_fill_event(event, &tv);
 }
+
+void termbox11::set_cursor(int cx, int cy) {
+  if (IS_CURSOR_HIDDEN(cursor_x, cursor_y) && !IS_CURSOR_HIDDEN(cx, cy))
+    bytebuffer_puts(&_impl->_output_buffer, funcs[T_SHOW_CURSOR]);
+
+  if (!IS_CURSOR_HIDDEN(cursor_x, cursor_y) && IS_CURSOR_HIDDEN(cx, cy))
+    bytebuffer_puts(&_impl->_output_buffer, funcs[T_HIDE_CURSOR]);
+
+  cursor_x = cx;
+  cursor_y = cy;
+  if (!IS_CURSOR_HIDDEN(cursor_x, cursor_y))
+    _impl->write_cursor(cursor_x, cursor_y);
+}
+
+void termbox11::select_input_mode(struct input_mode mode) {
+  if (!mode.escaped && !mode.alt)
+    mode.escaped = true;
+
+  /* technically termbox can handle that, but let's be nice and show here
+     what mode is actually used */
+  if (mode.escaped && mode.alt)
+    mode.alt = false;
+
+  _impl->_inputmode = mode;
+  if (mode.mouse) {
+    bytebuffer_puts(&_impl->_output_buffer, funcs[T_ENTER_MOUSE]);
+    bytebuffer_flush(&_impl->_output_buffer, inout);
+  } else {
+    bytebuffer_puts(&_impl->_output_buffer, funcs[T_EXIT_MOUSE]);
+    bytebuffer_flush(&_impl->_output_buffer, inout);
+  }
+}
+input_mode termbox11::input_mode() { return _impl->_inputmode; }
+
+void termbox11::select_output_mode(enum output_mode mode) {
+  _impl->_outputmode = mode;
+}
+
+output_mode termbox11::output_mode() { return _impl->_outputmode; }

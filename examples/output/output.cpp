@@ -46,14 +46,14 @@ static void print_combinations_table(int sx, int sy, const uint16_t *attrs,
 static void draw_all(termbox11 &tb) {
   tb.clear();
 
-  tb_select_output_mode(output_mode::normal);
+  tb.select_output_mode(output_mode::normal);
   static const uint16_t col1[] = {0, TB_BOLD};
   static const uint16_t col2[] = {TB_REVERSE};
   print_combinations_table(1, 1, col1, 2);
   print_combinations_table(2 + strlen(chars), 1, col2, 1);
   tb.present();
 
-  tb_select_output_mode(output_mode::grayscale);
+  tb.select_output_mode(output_mode::grayscale);
   int c, x, y;
   for (x = 0, y = 23; x < 24; ++x) {
     tb_change_cell(x, y, '@', x, 0);
@@ -61,7 +61,7 @@ static void draw_all(termbox11 &tb) {
   }
   tb.present();
 
-  tb_select_output_mode(output_mode::mode216);
+  tb.select_output_mode(output_mode::mode216);
   y++;
   for (c = 0, x = 0; c < 216; ++c, ++x) {
     if (!(x % 24)) {
@@ -73,7 +73,7 @@ static void draw_all(termbox11 &tb) {
   }
   tb.present();
 
-  tb_select_output_mode(output_mode::mode256);
+  tb.select_output_mode(output_mode::mode256);
   y++;
   for (c = 0, x = 0; c < 256; ++c, ++x) {
     if (!(x % 24)) {

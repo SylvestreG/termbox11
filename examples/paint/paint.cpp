@@ -101,7 +101,7 @@ int main(int argv, char **argc) {
   try {
     auto tb = termbox11();
 
-  tb_select_input_mode({.escaped = true, .mouse = true});
+  tb.select_input_mode({.escaped = true, .mouse = true});
   int w = tb.width();
   int h = tb.height();
   reallocBackBuffer(w, h);

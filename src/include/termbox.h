@@ -190,6 +190,19 @@ struct tb_event {
  * After successful initialization, the library must be
  * finalized using the tb_shutdown() function.
  */
+struct input_mode {
+  bool escaped{false};
+  bool alt{false};
+  bool mouse{false};
+};
+
+enum class output_mode {
+  normal,
+  mode256,
+  mode216,
+  grayscale
+};
+
 struct termbox_impl;
 
 class termbox11 {
@@ -207,6 +220,15 @@ public:
 
   size_t width() const;
   size_t height() const;
+
+  void set_cursor(int cx, int cy);
+
+  void select_input_mode(input_mode mode);
+  void select_output_mode(output_mode mode);
+  output_mode output_mode();
+
+  input_mode input_mode();
+
 private:
   std::unique_ptr<termbox_impl> _impl;
 };
@@ -222,7 +244,6 @@ void tb_set_clear_attributes(uint16_t fg, uint16_t bg);
  * TB_HIDE_CURSOR as both coordinates, then the cursor will be hidden. Cursor
  * is hidden by default.
  */
-void tb_set_cursor(int cx, int cy);
 
 /* Changes cell's parameters in the internal back buffer at the specified
  * position.
@@ -246,88 +267,6 @@ void tb_blit(int x, int y, int w, int h, const struct tb_cell *cells);
  */
 struct tb_cell *tb_cell_buffer(void);
 
-struct input_mode {
-  bool escaped{false};
-  bool alt{false};
-  bool mouse{false};
-};
-
-/* Sets the termbox input mode. Termbox has two input modes:
- * 1. Esc input mode.
- *    When ESC sequence is in the buffer and it doesn't match any known
- *    ESC sequence => ESC means TB_KEY_ESC.
- * 2. Alt input mode.
- *    When ESC sequence is in the buffer and it doesn't match any known
- *    sequence => ESC enables TB_MOD_ALT modifier for the next keyboard event.
- *
- * You can also apply TB_INPUT_MOUSE via bitwise OR operation to either of the
- * modes (e.g. TB_INPUT_ESC | TB_INPUT_MOUSE). If none of the main two modes
- * were set, but the mouse mode was, TB_INPUT_ESC mode is used. If for some
- * reason you've decided to use (TB_INPUT_ESC | TB_INPUT_ALT) combination, it
- * will behave as if only TB_INPUT_ESC was selected.
- *
- * If 'mode' is TB_INPUT_CURRENT, it returns the current input mode.
- *
- * Default termbox input mode is TB_INPUT_ESC.
- */
-void tb_select_input_mode(input_mode mode);
-input_mode tb_get_input_mode();
-
-enum class output_mode {
-  current,
-  normal,
-  mode256,
-  mode216,
-  grayscale
-};
-
-/* Sets the termbox output mode. Termbox has three output options:
- * 1. TB_OUTPUT_NORMAL     => [1..8]
- *    This mode provides 8 different colors:
- *      black, red, green, yellow, blue, magenta, cyan, white
- *    Shortcut: TB_BLACK, TB_RED, ...
- *    Attributes: TB_BOLD, TB_UNDERLINE, TB_REVERSE
- *
- *    Example usage:
- *        tb_change_cell(x, y, '@', TB_BLACK | TB_BOLD, TB_RED);
- *
- * 2. TB_OUTPUT_256        => [0..256]
- *    In this mode you can leverage the 256 terminal mode:
- *    0x00 - 0x07: the 8 colors as in TB_OUTPUT_NORMAL
- *    0x08 - 0x0f: TB_* | TB_BOLD
- *    0x10 - 0xe7: 216 different colors
- *    0xe8 - 0xff: 24 different shades of grey
- *
- *    Example usage:
- *        tb_change_cell(x, y, '@', 184, 240);
- *        tb_change_cell(x, y, '@', 0xb8, 0xf0);
- *
- * 3. TB_OUTPUT_216        => [0..216]
- *    This mode supports the 3rd range of the 256 mode only.
- *    But you don't need to provide an offset.
- *
- * 4. TB_OUTPUT_GRAYSCALE  => [0..23]
- *    This mode supports the 4th range of the 256 mode only.
- *    But you dont need to provide an offset.
- *
- * Execute build/src/demo/output to see its impact on your terminal.
- *
- * If 'mode' is TB_OUTPUT_CURRENT, it returns the current output mode.
- *
- * Default termbox output mode is TB_OUTPUT_NORMAL.
- */
-output_mode tb_select_output_mode(output_mode mode);
-
-/* Wait for an event up to 'timeout' milliseconds and fill the 'event'
- * structure with it, when the event is available. Returns the type of the
- * event (one of TB_EVENT_* constants) or -1 if there was an error or 0 in case
- * there were no event during 'timeout' period.
- */
-
-/* Wait for an event forever and fill the 'event' structure with it, when the
- * event is available. Returns the type of the event (one of TB_EVENT_*
- * constants) or -1 if there was an error.
- */
 
 /* Utility utf8 functions. */
 #define TB_EOF -1

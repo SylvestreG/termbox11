@@ -361,7 +361,7 @@ void draw_key(struct key *k, uint16_t fg, uint16_t bg) {
   }
 }
 
-void draw_keyboard() {
+void draw_keyboard(termbox11 &tb) {
   int i;
   tb_change_cell(0, 0, 0x250C, TB_WHITE, TB_DEFAULT);
   tb_change_cell(79, 0, 0x2510, TB_WHITE, TB_DEFAULT);
@@ -506,7 +506,7 @@ void draw_keyboard() {
   printf_tb(15, 3, TB_MAGENTA, TB_DEFAULT,
             "(press CTRL+X and then CTRL+C to change input mode)");
 
-  input_mode inputmode = tb_get_input_mode();
+  input_mode inputmode = tb.input_mode();
   char inputmode_str[64];
 
   if (inputmode.escaped)
@@ -655,11 +655,11 @@ int main(int argc, char **argv) {
   try {
     auto tb = termbox11();
 
-    tb_select_input_mode({.escaped = true, .mouse = true});
+    tb.select_input_mode({.escaped = true, .mouse = true});
     struct tb_event ev;
 
     tb.clear();
-    draw_keyboard();
+    draw_keyboard(tb);
     tb.present();
     int inputmode = 0;
     int ctrlxpressed = 0;
@@ -681,7 +681,7 @@ int main(int argc, char **argv) {
           if (inputmode >= 4) {
             inputmode = 0;
           }
-          tb_select_input_mode(chmap[inputmode]);
+          tb.select_input_mode(chmap[inputmode]);
         }
         if (ev.key == key_code::ctrl_x)
           ctrlxpressed = 1;
@@ -689,20 +689,20 @@ int main(int argc, char **argv) {
           ctrlxpressed = 0;
 
         tb.clear();
-        draw_keyboard();
+        draw_keyboard(tb);
         dispatch_press(&ev);
         pretty_print_press(&ev);
         tb.present();
         break;
       case event_type::resize:
         tb.clear();
-        draw_keyboard();
+        draw_keyboard(tb);
         pretty_print_resize(&ev);
         tb.present();
         break;
       case event_type::mouse:
         tb.clear();
-        draw_keyboard();
+        draw_keyboard(tb);
         pretty_print_mouse(&ev);
         tb.present();
         break;
